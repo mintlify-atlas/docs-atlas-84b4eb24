@@ -1,0 +1,389 @@
+---
+title: Migration Guide
+description: Upgrade from 0.2.x to 0.3.0 - breaking changes and migration steps
+icon: arrow-right-arrow-left
+---
+
+This guide helps you migrate from version 0.2.x to 0.3.0 of react-native-sherpa-onnx. Version 0.3.0 introduces significant improvements including full iOS support, better performance, and ~95% size reduction, but requires code changes.
+
+## Overview
+
+Version 0.3.0 introduces:
+- Instance-based API (TTS + STT)
+- Improved return types and type safety
+- Model-specific options structure
+- Renamed types and methods
+
+<Warning>
+  **Breaking Changes:** This release changes the public API. Please follow all migration steps before upgrading.
+</Warning>
+
+## Instance-based API (TTS + STT)
+
+<Steps>
+  <Step title="Understanding the Change">
+    TTS and STT now use an instance-based factory pattern instead of module-level singletons. Each call to `createTTS()` / `createSTT()` returns an independent engine instance.
+    
+    **Key requirement:** You **must** call `.destroy()` when done to free native resources.
+  </Step>
+
+  <Step title="Migrate TTS Code">
+    **Before (0.2.x):**
+    ```ts
+    initializeTTS({ modelPath: { type: 'asset', path: 'models/vits' } });
+    const audio = await generateSpeech('Hello');
+    await unloadTTS();
+    ```
+
+    **After (0.3.0):**
+    ```ts
+    const tts = await createTTS({ modelPath: { type: 'asset', path: 'models/vits' } });
+    const audio = await tts.generateSpeech('Hello');
+    await tts.destroy();
+    ```
+  </Step>
+
+  <Step title="Migrate STT Code">
+    **Before (0.2.x):**
+    ```ts
+    await initializeSTT({ modelPath: { type: 'asset', path: 'models/whisper' } });
+    const result = await transcribeFile('/audio.wav');
+    await unloadSTT();
+    ```
+
+    **After (0.3.0):**
+    ```ts
+    const stt = await createSTT({ modelPath: { type: 'asset', path: 'models/whisper' } });
+    const result = await stt.transcribeFile('/audio.wav');
+    await stt.destroy();
+    ```
+  </Step>
+</Steps>
+
+## Speech-to-Text (STT) Changes
+
+### Return Type Changes
+
+`transcribeFile` now returns a detailed object instead of just a string:
+
+```diff
+- const text: string = await transcribeFile(path);
++ const result: SttRecognitionResult = await stt.transcribeFile(path);
++ const text = result.text;
+```
+
+**New return type structure:**
+
+```ts
+interface SttRecognitionResult {
+  text: string;           // Transcribed text
+  tokens: string[];       // Token sequence
+  timestamps: number[];   // Timestamp per token
+  lang: string;          // Detected language (if supported)
+  emotion: string;       // Emotion tag (if supported)
+  event: string;         // Event tag (if supported)
+  durations: number[];   // Duration info
+}
+```
+
+<Tip>
+  If you only need the text, use `result.text` to get the transcription string.
+</Tip>
+
+### Hotwords Support
+
+`initializeSTT` now supports two additional optional options:
+
+```ts
+await createSTT({
+  modelPath: { type: 'asset', path: 'models/whisper' },
+  hotwordsFile: '/path/to/hotwords.txt',  // NEW
+  hotwordsScore: 1.5,                      // NEW
+});
+```
+
+### Deprecated Types
+
+```diff
+- TranscriptionResult  // REMOVED
++ SttRecognitionResult  // Use this instead
+```
+
+### Native Method Renames
+
+If you call the TurboModule directly, methods were renamed:
+
+```diff
+- initializeSherpaOnnx
++ initializeStt
+
+- unloadSherpaOnnx
++ unloadStt
+```
+
+## Text-to-Speech (TTS) Changes
+
+### Model Options Structure
+
+Model-specific options (noise scales, length scale) now use a nested `modelOptions` structure instead of flat properties.
+
+<CodeGroup>
+```ts Before (0.2.x)
+initializeTTS({
+  modelPath: { type: 'asset', path: 'models/vits' },
+  modelType: 'vits',
+  noiseScale: 0.667,
+  noiseScaleW: 0.8,
+  lengthScale: 1.0
+});
+```
+
+```ts After (0.3.0)
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits' },
+  modelType: 'vits',
+  modelOptions: {
+    vits: {
+      noiseScale: 0.667,
+      noiseScaleW: 0.8,
+      lengthScale: 1.0
+    }
+  }
+});
+```
+</CodeGroup>
+
+### Update Parameters
+
+The `updateParams` method also uses the new structure:
+
+<CodeGroup>
+```ts Before (0.2.x)
+updateTtsParams({
+  noiseScale: 0.7,
+  lengthScale: 1.2
+});
+```
+
+```ts After (0.3.0)
+tts.updateParams({
+  modelOptions: {
+    vits: {
+      noiseScale: 0.7,
+      lengthScale: 1.2
+    }
+  }
+});
+```
+</CodeGroup>
+
+### New Model-Specific Types
+
+The following types are now exported:
+
+```ts
+import type {
+  TtsModelOptions,
+  TtsVitsModelOptions,
+  TtsMatchaModelOptions,
+  TtsKokoroModelOptions,
+  TtsKittenModelOptions,
+  TtsPocketModelOptions
+} from 'react-native-sherpa-onnx/tts';
+```
+
+### Instance Methods and TurboModule
+
+If you call the TurboModule directly, all instance-bound methods now take `instanceId` as the first parameter:
+
+```ts
+// Instance methods
+tts.generateSpeech(text)      // High-level API
+tts.generateSpeechStream()     // High-level API
+tts.destroy()                  // High-level API
+
+// Direct TurboModule (advanced)
+module.generateSpeech(instanceId, text)  // Low-level
+```
+
+### Deprecated Types
+
+```diff
+- SynthesisOptions    // REMOVED
++ TtsGenerationOptions // Use this instead
+```
+
+## Complete Migration Example
+
+<Tabs>
+  <Tab title="STT Migration">
+    **Before (0.2.x):**
+    ```ts
+    import { initializeSTT, transcribeFile, unloadSTT } from 'react-native-sherpa-onnx/stt';
+
+    async function transcribeAudio(audioPath: string) {
+      await initializeSTT({
+        modelPath: { type: 'asset', path: 'models/whisper-tiny' },
+        modelType: 'whisper'
+      });
+      
+      const text = await transcribeFile(audioPath);
+      console.log('Transcription:', text);
+      
+      await unloadSTT();
+      return text;
+    }
+    ```
+
+    **After (0.3.0):**
+    ```ts
+    import { createSTT } from 'react-native-sherpa-onnx/stt';
+
+    async function transcribeAudio(audioPath: string) {
+      const stt = await createSTT({
+        modelPath: { type: 'asset', path: 'models/whisper-tiny' },
+        modelType: 'whisper'
+      });
+      
+      try {
+        const result = await stt.transcribeFile(audioPath);
+        console.log('Transcription:', result.text);
+        console.log('Language:', result.lang);
+        return result.text;
+      } finally {
+        await stt.destroy(); // Always cleanup
+      }
+    }
+    ```
+  </Tab>
+
+  <Tab title="TTS Migration">
+    **Before (0.2.x):**
+    ```ts
+    import { initializeTTS, generateSpeech, unloadTTS } from 'react-native-sherpa-onnx/tts';
+
+    async function speakText(text: string) {
+      await initializeTTS({
+        modelPath: { type: 'asset', path: 'models/vits-piper' },
+        modelType: 'vits',
+        noiseScale: 0.667,
+        lengthScale: 1.0
+      });
+      
+      const audio = await generateSpeech(text);
+      // Play audio...
+      
+      await unloadTTS();
+    }
+    ```
+
+    **After (0.3.0):**
+    ```ts
+    import { createTTS } from 'react-native-sherpa-onnx/tts';
+
+    async function speakText(text: string) {
+      const tts = await createTTS({
+        modelPath: { type: 'asset', path: 'models/vits-piper' },
+        modelType: 'vits',
+        modelOptions: {
+          vits: {
+            noiseScale: 0.667,
+            lengthScale: 1.0
+          }
+        }
+      });
+      
+      try {
+        const audio = await tts.generateSpeech(text);
+        // Play audio...
+      } finally {
+        await tts.destroy(); // Always cleanup
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Common Patterns
+
+### Managing Multiple Instances
+
+```ts
+import { createSTT, createTTS } from 'react-native-sherpa-onnx';
+
+class SpeechManager {
+  private stt: SttEngine | null = null;
+  private tts: TtsEngine | null = null;
+
+  async initialize() {
+    this.stt = await createSTT({
+      modelPath: { type: 'asset', path: 'models/whisper' },
+      modelType: 'auto'
+    });
+
+    this.tts = await createTTS({
+      modelPath: { type: 'asset', path: 'models/vits' },
+      modelType: 'auto'
+    });
+  }
+
+  async cleanup() {
+    if (this.stt) {
+      await this.stt.destroy();
+      this.stt = null;
+    }
+    if (this.tts) {
+      await this.tts.destroy();
+      this.tts = null;
+    }
+  }
+}
+```
+
+### React Hook Pattern
+
+```ts
+import { useEffect, useRef } from 'react';
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+
+function useSpeechRecognition() {
+  const sttRef = useRef<SttEngine | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function init() {
+      const stt = await createSTT({
+        modelPath: { type: 'asset', path: 'models/whisper' },
+        modelType: 'auto'
+      });
+      
+      if (mounted) {
+        sttRef.current = stt;
+      } else {
+        await stt.destroy();
+      }
+    }
+
+    init();
+
+    return () => {
+      mounted = false;
+      if (sttRef.current) {
+        sttRef.current.destroy();
+      }
+    };
+  }, []);
+
+  return sttRef.current;
+}
+```
+
+## Need Help?
+
+If you encounter issues during migration:
+
+1. Check the [API Reference](/api/core) for detailed method signatures
+2. Review [Troubleshooting](/resources/troubleshooting) for common issues
+3. See [Examples](/resources/examples) for working code samples
+4. Open an issue on [GitHub](https://github.com/XDcobra/react-native-sherpa-onnx/issues)

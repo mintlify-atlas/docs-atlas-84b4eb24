@@ -1,0 +1,620 @@
+---
+title: Troubleshooting
+description: Common issues, solutions, and debugging tips
+icon: wrench
+---
+
+This guide helps you resolve common issues when using react-native-sherpa-onnx.
+
+## Installation Issues
+
+<AccordionGroup>
+  <Accordion title="Yarn Plug'n'Play (PnP) installation fails">
+    **Problem:** Postinstall scripts fail with Yarn v3+ using PnP.
+
+    **Solution:** Configure Yarn to use the Node Modules linker:
+
+    ```yaml .yarnrc.yml
+    nodeLinker: node-modules
+    ```
+
+    Or set the environment variable during install:
+
+    ```bash
+    YARN_NODE_LINKER=node-modules yarn install
+    ```
+  </Accordion>
+
+  <Accordion title="iOS: Framework or headers not found">
+    **Problem:** Build fails with "sherpa_onnx.xcframework not found" or similar errors.
+
+    **Solution:**
+
+    1. Ensure you've run `pod install` in the `ios` directory:
+       ```bash
+       cd ios
+       bundle install
+       bundle exec pod install
+       ```
+
+    2. The XCFramework is downloaded automatically during `pod install`. If download fails:
+       - Check your internet connection
+       - Check the version tag in `third_party/sherpa-onnx-prebuilt/IOS_RELEASE_TAG`
+       - Manually download from [GitHub Releases](https://github.com/XDcobra/react-native-sherpa-onnx/releases)
+
+    3. Clean and rebuild:
+       ```bash
+       cd ios
+       rm -rf Pods Podfile.lock
+       pod install
+       ```
+  </Accordion>
+
+  <Accordion title="Android: Gradle build fails">
+    **Problem:** Android build fails with native library errors.
+
+    **Solution:**
+
+    1. Clean the build:
+       ```bash
+       cd android
+       ./gradlew clean
+       cd ..
+       ```
+
+    2. Clear React Native cache:
+       ```bash
+       yarn start --reset-cache
+       ```
+
+    3. Rebuild:
+       ```bash
+       yarn android
+       ```
+
+    4. Check that you're using the minimum required versions:
+       - Android API 24+ (Android 7.0+)
+       - React Native >= 0.70
+  </Accordion>
+</AccordionGroup>
+
+## Model Issues
+
+<AccordionGroup>
+  <Accordion title='Error: "Model directory does not exist"'>
+    **Problem:** Initialization fails because the model path cannot be found.
+
+    **Causes and Solutions:**
+
+    **For bundled assets:**
+    - Check the asset path (e.g., `models/your-folder`)
+    - **Android:** Verify files are in `android/app/src/main/assets/models/`
+    - **iOS:** Verify the folder is added as a **folder reference** (blue folder) in Xcode under "Copy Bundle Resources"
+    - Rebuild the app after adding models
+
+    **For Play Asset Delivery (PAD):**
+    - Ensure the app was installed with the asset pack:
+      ```bash
+      yarn android:pad  # or use bundletool
+      ```
+    - Check if PAD is available:
+      ```ts
+      const padPath = await getAssetPackPath('sherpa_models');
+      if (!padPath) {
+        console.log('Asset pack not available');
+      }
+      ```
+
+    **For file paths:**
+    - Ensure the path is **absolute**
+    - Verify the folder exists on disk
+    - Check file permissions
+  </Accordion>
+
+  <Accordion title='Error: "Cannot auto-detect model type"'>
+    **Problem:** Model type auto-detection fails.
+
+    **Solution:**
+
+    1. Verify the model folder contains required files for at least one model type:
+       - **Whisper:** `encoder.onnx`, `decoder.onnx`, `tokens.txt`
+       - **VITS:** `model.onnx`, `tokens.txt`
+       - **Paraformer:** `model.onnx`
+       - See [Supported Models](/models/stt/overview) for complete requirements
+
+    2. File names are **case-sensitive**
+
+    3. Try specifying the model type explicitly:
+       ```ts
+       const stt = await createSTT({
+         modelPath: { type: 'asset', path: 'models/whisper' },
+         modelType: 'whisper'  // Explicit type
+       });
+       ```
+
+    4. Use detection API to debug:
+       ```ts
+       import { detectSttModel } from 'react-native-sherpa-onnx/stt';
+       
+       const result = await detectSttModel({
+         type: 'asset',
+         path: 'models/your-model'
+       });
+       
+       console.log('Detection result:', result);
+       ```
+  </Accordion>
+
+  <Accordion title="Models list is empty or missing models">
+    **Problem:** `listAssetModels()` or `listModelsAtPath()` returns empty or incomplete list.
+
+    **Solution:**
+
+    **For bundled assets:**
+    - Verify models are in the correct location
+    - **Android:** `android/app/src/main/assets/models/`
+    - **iOS:** Added as folder reference in Xcode
+    - Rebuild after adding models
+
+    **For PAD:**
+    - Confirm `getAssetPackPath()` returns a valid path
+    - Check the asset pack's `models/` directory contains folders
+    - Install via AAB with the asset pack included
+
+    **For file paths:**
+    - Pass the directory that **directly contains** model folders
+    - Use `recursive: true` only if you have nested folders:
+      ```ts
+      const models = await listModelsAtPath(basePath, true);
+      ```
+  </Accordion>
+
+  <Accordion title="Model is for unsupported hardware">
+    **Problem:** Error indicates model requires specific hardware (RK35xx, Ascend, etc.).
+
+    **Solution:**
+
+    These models are built for specific NPU hardware not supported in React Native:
+    - Rockchip RK3588
+    - Huawei Ascend/CANN
+    - OM-format models
+
+    **Use ONNX models instead:**
+    - Download standard ONNX models from [sherpa-onnx model repository](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/index.html)
+    - Use QNN models for Qualcomm devices (requires QNN runtime libs)
+  </Accordion>
+</AccordionGroup>
+
+## Audio Format Issues
+
+<AccordionGroup>
+  <Accordion title='Error: "Invalid audio format" or transcription fails'>
+    **Problem:** Audio file cannot be transcribed or produces poor results.
+
+    **Solution:**
+
+    STT expects **WAV files** with specific format:
+    - **Sample rate:** 16 kHz
+    - **Channels:** Mono (1 channel)
+    - **Bit depth:** 16-bit PCM
+
+    **Convert audio with ffmpeg:**
+
+    ```bash
+    ffmpeg -i input.mp3 -ar 16000 -ac 1 -sample_fmt s16 output.wav
+    ```
+
+    **In your app, check audio format before transcription:**
+
+    ```ts
+    import { getAudioInfo } from 'react-native-audio-helper';
+
+    const info = await getAudioInfo(audioPath);
+    if (info.sampleRate !== 16000 || info.channels !== 1) {
+      // Convert or show error
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="TTS audio playback issues">
+    **Problem:** Generated speech doesn't play or sounds wrong.
+
+    **Solution:**
+
+    1. Use the correct sample rate returned by TTS:
+       ```ts
+       const audio = await tts.generateSpeech('Hello');
+       console.log('Sample rate:', audio.sampleRate);
+       // Use this sample rate for playback
+       ```
+
+    2. Convert Float32Array to Int16Array if needed:
+       ```ts
+       function floatTo16BitPCM(float32Array: Float32Array): Int16Array {
+         const int16Array = new Int16Array(float32Array.length);
+         for (let i = 0; i < float32Array.length; i++) {
+           const s = Math.max(-1, Math.min(1, float32Array[i]));
+           int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+         }
+         return int16Array;
+       }
+       ```
+
+    3. Check your audio player library supports the format
+  </Accordion>
+</AccordionGroup>
+
+## Execution Provider Issues
+
+<AccordionGroup>
+  <Accordion title="QNN (Qualcomm NPU) not available">
+    **Problem:** `getQnnSupport()` returns `canInit: false`.
+
+    **Diagnosis:**
+
+    ```ts
+    const qnn = await getQnnSupport();
+    console.log('QNN support:', qnn);
+    
+    if (!qnn.providerCompiled) {
+      // QNN not built into ONNX Runtime
+    } else if (!qnn.hasAccelerator) {
+      // QNN runtime libs missing or HTP init failed
+    } else if (!qnn.canInit) {
+      // Session creation failed
+    }
+    ```
+
+    **Solutions:**
+
+    1. **Add QNN runtime libraries** (most common issue):
+       - Download [Qualcomm AI Runtime](https://softwarecenter.qualcomm.com/catalog/item/Qualcomm_AI_Runtime_Community)
+       - Copy `.so` files to `android/app/src/main/jniLibs/arm64-v8a/`:
+         - `libQnnHtp.so`
+         - `libQnnHtpV*Stub.so` (version-specific)
+         - `libQnnSystem.so`
+         - And others (see [Execution Providers](/features/execution-providers))
+       - Rebuild the app
+
+    2. **Check device compatibility:**
+       - QNN requires Qualcomm Snapdragon SoC
+       - Not all Snapdragon devices support HTP/NPU
+
+    3. **Fallback to other providers:**
+       ```ts
+       const providers = await getAvailableProviders();
+       let provider = 'cpu';
+       
+       if ((await getQnnSupport()).canInit) {
+         provider = 'qnn';
+       } else if ((await getNnapiSupport()).canInit) {
+         provider = 'nnapi';
+       }
+       ```
+  </Accordion>
+
+  <Accordion title="NNAPI fails or is slow">
+    **Problem:** NNAPI provider doesn't work or performs worse than CPU.
+
+    **Understanding NNAPI behavior:**
+
+    ```ts
+    const nnapi = await getNnapiSupport();
+    
+    // hasAccelerator: false, canInit: true is NORMAL
+    // NNAPI can work on CPU even without dedicated accelerator
+    ```
+
+    **Solutions:**
+
+    1. **Check if accelerator is available:**
+       ```ts
+       if (!nnapi.hasAccelerator) {
+         // May run on CPU through NNAPI - try and benchmark
+       }
+       ```
+
+    2. **Test performance:**
+       - NNAPI on some devices may be slower than CPU EP
+       - Benchmark both and choose the faster one
+
+    3. **Use XNNPACK instead:**
+       ```ts
+       const xnnpack = await getXnnpackSupport();
+       if (xnnpack.canInit) {
+         // XNNPACK is CPU-optimized, often faster than NNAPI on CPU
+       }
+       ```
+  </Accordion>
+
+  <Accordion title="Core ML not working on iOS">
+    **Problem:** Core ML execution provider issues on iOS.
+
+    **Check ANE availability:**
+
+    ```ts
+    const coreml = await getCoreMlSupport();
+    console.log('Core ML compiled:', coreml.providerCompiled);
+    console.log('Has ANE:', coreml.hasAccelerator);
+    ```
+
+    **Notes:**
+    - Core ML is available on iOS 11+
+    - Apple Neural Engine (ANE) requires iOS 15+ and A12+ chip
+    - Simulator doesn't have ANE
+    - Falls back to CPU/GPU automatically
+  </Accordion>
+</AccordionGroup>
+
+## Performance Issues
+
+<AccordionGroup>
+  <Accordion title="Slow transcription or generation">
+    **Problem:** STT/TTS is too slow for your use case.
+
+    **Optimization strategies:**
+
+    1. **Use hardware acceleration:**
+       ```ts
+       const stt = await createSTT({
+         modelPath,
+         modelType: 'whisper',
+         provider: 'qnn'  // or 'nnapi', 'xnnpack'
+       });
+       ```
+
+    2. **Use smaller/quantized models:**
+       - Whisper Tiny instead of Small/Base
+       - Int8 quantized models (automatic when `preferInt8: true`)
+
+    3. **Use optimized model types:**
+       - **STT:** Paraformer or Zipformer (faster than Whisper)
+       - **TTS:** VITS is generally fast
+
+    4. **For streaming, tune buffer sizes:**
+       ```ts
+       const stream = createPcmLiveStream({
+         sampleRate: 16000,
+         bufferSizeInSeconds: 0.1  // Smaller = more frequent, more overhead
+       });
+       ```
+
+    5. **Profile with different providers:**
+       ```ts
+       async function benchmark(provider: string) {
+         const start = Date.now();
+         const stt = await createSTT({ modelPath, modelType, provider });
+         const result = await stt.transcribeFile(audioPath);
+         await stt.destroy();
+         const duration = Date.now() - start;
+         console.log(`${provider}: ${duration}ms`);
+       }
+       
+       await benchmark('cpu');
+       await benchmark('qnn');
+       await benchmark('nnapi');
+       ```
+  </Accordion>
+
+  <Accordion title="High memory usage">
+    **Problem:** App crashes or becomes sluggish due to memory usage.
+
+    **Solutions:**
+
+    1. **Always call `.destroy()`:**
+       ```ts
+       const stt = await createSTT(config);
+       try {
+         // Use stt
+       } finally {
+         await stt.destroy();  // Critical!
+       }
+       ```
+
+    2. **Don't create multiple instances unnecessarily:**
+       ```ts
+       // Bad: creates new instance each time
+       async function transcribe(text: string) {
+         const stt = await createSTT(config);
+         return stt.transcribeFile(text);
+       }
+       
+       // Good: reuse instance
+       class TranscriptionService {
+         private stt: SttEngine;
+         
+         async init() {
+           this.stt = await createSTT(config);
+         }
+         
+         async transcribe(path: string) {
+           return this.stt.transcribeFile(path);
+         }
+         
+         async cleanup() {
+           await this.stt.destroy();
+         }
+       }
+       ```
+
+    3. **Use smaller models**
+
+    4. **Monitor memory in development:**
+       ```ts
+       const before = performance.memory?.usedJSHeapSize;
+       // ... operations ...
+       const after = performance.memory?.usedJSHeapSize;
+       console.log('Memory delta:', (after - before) / 1024 / 1024, 'MB');
+       ```
+  </Accordion>
+</AccordionGroup>
+
+## Streaming Issues
+
+<AccordionGroup>
+  <Accordion title="Streaming STT: No partial results">
+    **Problem:** Streaming recognition doesn't produce partial results.
+
+    **Solution:**
+
+    1. **Call `getResult()` regularly:**
+       ```ts
+       stream.on('data', async (samples) => {
+         recognizer.acceptWaveform(samples);
+         
+         // Get result after each chunk
+         const result = await recognizer.getResult();
+         if (result.text) {
+           console.log('Partial:', result.text);
+         }
+       });
+       ```
+
+    2. **Check endpoint detection:**
+       ```ts
+       if (await recognizer.isEndpoint()) {
+         const final = await recognizer.getResult();
+         console.log('Final:', final.text);
+         await recognizer.reset();  // Start new utterance
+       }
+       ```
+
+    3. **Ensure model supports streaming:**
+       - Use `transducer`, `paraformer`, or `nemo_ctc`
+       - Whisper does NOT support true streaming
+  </Accordion>
+
+  <Accordion title="Streaming TTS: Audio glitches">
+    **Problem:** Streamed TTS audio has gaps or glitches.
+
+    **Solution:**
+
+    1. **Buffer chunks before playing:**
+       ```ts
+       const buffer: Float32Array[] = [];
+       
+       for await (const chunk of tts.generateSpeechStream(text)) {
+         buffer.push(chunk.samples);
+         
+         // Start playing after buffering a few chunks
+         if (buffer.length === 3) {
+           startPlayback(buffer);
+         }
+       }
+       ```
+
+    2. **Use appropriate audio player:**
+       - Some audio libraries don't support streaming well
+       - Try `react-native-track-player` or platform-specific APIs
+
+    3. **Increase chunk sizes** (model dependent)
+  </Accordion>
+</AccordionGroup>
+
+## Runtime Errors
+
+<AccordionGroup>
+  <Accordion title='Error: "TurboModuleRegistry not found"'>
+    **Problem:** Native module not linked properly.
+
+    **Solution:**
+
+    1. **Clear cache and rebuild:**
+       ```bash
+       # Clear Metro cache
+       yarn start --reset-cache
+       
+       # iOS: reinstall pods
+       cd ios && pod install && cd ..
+       
+       # Android: clean build
+       cd android && ./gradlew clean && cd ..
+       
+       # Rebuild
+       yarn ios  # or yarn android
+       ```
+
+    2. **Verify React Native version:**
+       - Minimum: React Native >= 0.70
+       - TurboModules are required
+  </Accordion>
+
+  <Accordion title="App crashes on initialization">
+    **Problem:** App crashes when calling `createSTT()` or `createTTS()`.
+
+    **Debugging steps:**
+
+    1. **Check native logs:**
+       ```bash
+       # Android
+       adb logcat | grep sherpa
+       
+       # iOS
+       # View logs in Xcode Console
+       ```
+
+    2. **Verify model files:**
+       - All required files present
+       - Files not corrupted
+       - Correct model type
+
+    3. **Try with a known-good model:**
+       - Download a tested model from examples
+       - Verify your app works with that model first
+
+    4. **Check device compatibility:**
+       - Android API 24+ (Android 7.0+)
+       - iOS 13.0+
+
+    5. **Enable debug logging** (if available in future versions)
+  </Accordion>
+</AccordionGroup>
+
+## Getting Help
+
+If you're still stuck after trying these solutions:
+
+<CardGroup cols={2}>
+  <Card title="GitHub Issues" icon="github" href="https://github.com/XDcobra/react-native-sherpa-onnx/issues">
+    Search existing issues or create a new one
+  </Card>
+  
+  <Card title="Examples" icon="code" href="/resources/examples">
+    Check working code examples
+  </Card>
+  
+  <Card title="API Reference" icon="book" href="/api/core">
+    Review complete API documentation
+  </Card>
+  
+  <Card title="Migration Guide" icon="arrow-right-arrow-left" href="/resources/migration">
+    Upgrade from 0.2.x to 0.3.0
+  </Card>
+</CardGroup>
+
+### When Reporting Issues
+
+Please include:
+
+1. **Environment:**
+   - React Native version
+   - react-native-sherpa-onnx version
+   - Platform (iOS/Android) and OS version
+   - Device model
+
+2. **Code snippet:**
+   - Minimal reproducible example
+   - How you're initializing and using the library
+
+3. **Model information:**
+   - Model type
+   - Model source/download link
+   - File size and structure
+
+4. **Logs:**
+   - JavaScript errors
+   - Native logs (adb logcat or Xcode console)
+
+5. **Steps to reproduce:**
+   - Exact steps to trigger the issue
+   - Expected vs actual behavior

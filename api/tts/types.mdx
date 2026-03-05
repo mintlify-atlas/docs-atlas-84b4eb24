@@ -1,0 +1,414 @@
+---
+title: TTS Types
+description: TypeScript types and interfaces for text-to-speech
+---
+
+Complete type definitions for the TTS (text-to-speech) API.
+
+## Model Types
+
+### TTSModelType
+
+Supported TTS model types.
+
+```typescript
+type TTSModelType =
+  | 'vits'      // VITS models (Piper, Coqui, MeloTTS, MMS variants)
+  | 'matcha'    // Matcha models (acoustic + vocoder)
+  | 'kokoro'    // Kokoro models (multi-speaker, multi-language)
+  | 'kitten'    // KittenTTS models (lightweight, multi-speaker)
+  | 'pocket'    // Pocket TTS models
+  | 'zipvoice'  // Zipvoice models (voice cloning capable)
+  | 'auto';     // Auto-detect from files (default)
+```
+
+## Interfaces
+
+### TtsEngine
+
+Batch TTS engine instance returned by `createTTS()`.
+
+```typescript
+interface TtsEngine {
+  readonly instanceId: string;
+  
+  generateSpeech(
+    text: string,
+    options?: TtsGenerationOptions
+  ): Promise<GeneratedAudio>;
+  
+  generateSpeechWithTimestamps(
+    text: string,
+    options?: TtsGenerationOptions
+  ): Promise<GeneratedAudioWithTimestamps>;
+  
+  updateParams(options: TtsUpdateOptions): Promise<{
+    success: boolean;
+    detectedModels: Array<{ type: string; modelDir: string }>;
+  }>;
+  
+  getModelInfo(): Promise<TTSModelInfo>;
+  getSampleRate(): Promise<number>;
+  getNumSpeakers(): Promise<number>;
+  
+  destroy(): Promise<void>;
+}
+```
+
+### StreamingTtsEngine
+
+Streaming TTS engine instance returned by `createStreamingTTS()`.
+
+```typescript
+interface StreamingTtsEngine {
+  readonly instanceId: string;
+  
+  generateSpeechStream(
+    text: string,
+    options: TtsGenerationOptions | undefined,
+    handlers: TtsStreamHandlers
+  ): Promise<TtsStreamController>;
+  
+  cancelSpeechStream(): Promise<void>;
+  
+  startPcmPlayer(sampleRate: number, channels: number): Promise<void>;
+  writePcmChunk(samples: number[]): Promise<void>;
+  stopPcmPlayer(): Promise<void>;
+  
+  getModelInfo(): Promise<TTSModelInfo>;
+  getSampleRate(): Promise<number>;
+  getNumSpeakers(): Promise<number>;
+  
+  destroy(): Promise<void>;
+}
+```
+
+### GeneratedAudio
+
+Generated audio data from TTS synthesis.
+
+```typescript
+interface GeneratedAudio {
+  /** Audio samples as float values in [-1.0, 1.0] (raw PCM) */
+  samples: number[];
+  
+  /** Sample rate in Hz (e.g., 16000, 22050, 44100, 48000) */
+  sampleRate: number;
+}
+```
+
+### GeneratedAudioWithTimestamps
+
+Generated audio with subtitle/timestamp metadata.
+
+```typescript
+interface GeneratedAudioWithTimestamps extends GeneratedAudio {
+  /** Subtitle/timestamp entries */
+  subtitles: TtsSubtitleItem[];
+  
+  /** True if timestamps are estimated rather than model-provided */
+  estimated: boolean;
+}
+```
+
+### TtsSubtitleItem
+
+Subtitle/timestamp item for synthesized speech.
+
+```typescript
+interface TtsSubtitleItem {
+  /** Text token for this time range */
+  text: string;
+  
+  /** Start time in seconds */
+  start: number;
+  
+  /** End time in seconds */
+  end: number;
+}
+```
+
+### TTSModelInfo
+
+Information about TTS model capabilities.
+
+```typescript
+interface TTSModelInfo {
+  /** Sample rate that the model generates audio at */
+  sampleRate: number;
+  
+  /**
+   * Number of speakers/voices available in the model.
+   * - 0 or 1: Single-speaker model
+   * - >1: Multi-speaker model
+   */
+  numSpeakers: number;
+}
+```
+
+### TtsGenerationOptions
+
+Options for TTS generation.
+
+```typescript
+interface TtsGenerationOptions {
+  /**
+   * Speaker ID for multi-speaker models.
+   * Use getNumSpeakers() to check how many speakers are available.
+   * @default 0
+   */
+  sid?: number;
+  
+  /**
+   * Speech speed multiplier.
+   * - 1.0 = normal speed
+   * - 0.5 = half speed (slower)
+   * - 2.0 = double speed (faster)
+   * @default 1.0
+   */
+  speed?: number;
+  
+  /**
+   * Silence scale (used at generate time).
+   */
+  silenceScale?: number;
+  
+  /**
+   * Reference audio for voice cloning.
+   * Only used by Pocket TTS; other model types ignore this.
+   */
+  referenceAudio?: {
+    samples: number[];   // Mono float samples in [-1, 1]
+    sampleRate: number;  // Sample rate in Hz
+  };
+  
+  /**
+   * Transcript text of the reference audio.
+   * Required for Pocket TTS when referenceAudio is provided.
+   */
+  referenceText?: string;
+  
+  /**
+   * Number of steps (e.g., flow-matching steps).
+   * Used by models such as Pocket.
+   */
+  numSteps?: number;
+  
+  /**
+   * Extra options as key-value pairs.
+   * Model-specific (e.g., temperature, chunk_size for Pocket).
+   */
+  extra?: Record<string, string>;
+}
+```
+
+## Model-Specific Options
+
+### TtsModelOptions
+
+Model-specific TTS options. Only the block for the loaded model type is applied.
+
+```typescript
+interface TtsModelOptions {
+  vits?: TtsVitsModelOptions;
+  matcha?: TtsMatchaModelOptions;
+  kokoro?: TtsKokoroModelOptions;
+  kitten?: TtsKittenModelOptions;
+  pocket?: TtsPocketModelOptions;
+}
+```
+
+### TtsVitsModelOptions
+
+Options for VITS models.
+
+```typescript
+interface TtsVitsModelOptions {
+  /** Noise scale. If omitted, model default is used. */
+  noiseScale?: number;
+  
+  /** Noise scale W. If omitted, model default is used. */
+  noiseScaleW?: number;
+  
+  /** Length scale. If omitted, model default is used. */
+  lengthScale?: number;
+}
+```
+
+### TtsMatchaModelOptions
+
+Options for Matcha models.
+
+```typescript
+interface TtsMatchaModelOptions {
+  /** Noise scale. If omitted, model default is used. */
+  noiseScale?: number;
+  
+  /** Length scale. If omitted, model default is used. */
+  lengthScale?: number;
+}
+```
+
+### TtsKokoroModelOptions
+
+Options for Kokoro models.
+
+```typescript
+interface TtsKokoroModelOptions {
+  /** Length scale. If omitted, model default is used. */
+  lengthScale?: number;
+}
+```
+
+### TtsKittenModelOptions
+
+Options for KittenTTS models.
+
+```typescript
+interface TtsKittenModelOptions {
+  /** Length scale. If omitted, model default is used. */
+  lengthScale?: number;
+}
+```
+
+### TtsPocketModelOptions
+
+Options for Pocket TTS models.
+
+```typescript
+interface TtsPocketModelOptions {
+  // No init-time options; voice cloning is via GenerationConfig at generate time
+}
+```
+
+### TtsUpdateOptions
+
+Options for updating TTS model parameters at runtime.
+
+```typescript
+interface TtsUpdateOptions {
+  /**
+   * Model type currently loaded.
+   * When omitted or 'auto', uses the type from last successful init.
+   */
+  modelType?: TTSModelType;
+  
+  /**
+   * Model-specific options.
+   * Only the block for the effective model type is used.
+   */
+  modelOptions?: TtsModelOptions;
+}
+```
+
+## Streaming Types
+
+### TtsStreamHandlers
+
+Handlers for TTS streaming generation.
+
+```typescript
+interface TtsStreamHandlers {
+  onChunk?: (chunk: TtsStreamChunk) => void;
+  onEnd?: (event: TtsStreamEnd) => void;
+  onError?: (event: TtsStreamError) => void;
+}
+```
+
+### TtsStreamChunk
+
+Streaming chunk event payload.
+
+```typescript
+interface TtsStreamChunk {
+  /** Instance ID (for multi-instance routing) */
+  instanceId?: string;
+  
+  /** Request ID for this generation */
+  requestId?: string;
+  
+  /** Audio samples (float in [-1, 1]) */
+  samples: number[];
+  
+  /** Sample rate in Hz */
+  sampleRate: number;
+  
+  /** Progress percentage (0-100) */
+  progress: number;
+  
+  /** True if this is the final chunk */
+  isFinal: boolean;
+}
+```
+
+### TtsStreamEnd
+
+Streaming end event payload.
+
+```typescript
+interface TtsStreamEnd {
+  /** Instance ID */
+  instanceId?: string;
+  
+  /** Request ID */
+  requestId?: string;
+  
+  /** True if generation was cancelled */
+  cancelled: boolean;
+}
+```
+
+### TtsStreamError
+
+Streaming error event payload.
+
+```typescript
+interface TtsStreamError {
+  /** Instance ID */
+  instanceId?: string;
+  
+  /** Request ID */
+  requestId?: string;
+  
+  /** Error message */
+  message: string;
+}
+```
+
+### TtsStreamController
+
+Controller returned by `generateSpeechStream()`.
+
+```typescript
+interface TtsStreamController {
+  /** Cancel the ongoing TTS generation */
+  cancel(): Promise<void>;
+  
+  /** Remove event listeners (called automatically on end/error) */
+  unsubscribe(): void;
+}
+```
+
+## Constants
+
+### TTS_MODEL_TYPES
+
+Runtime list of supported TTS model types.
+
+```typescript
+const TTS_MODEL_TYPES: readonly TTSModelType[] = [
+  'vits',
+  'matcha',
+  'kokoro',
+  'kitten',
+  'pocket',
+  'zipvoice',
+  'auto',
+];
+```
+
+## See Also
+
+- [createTTS()](/api/tts/create-tts) - Create batch TTS engine
+- [createStreamingTTS()](/api/tts/streaming-tts) - Create streaming TTS engine
+- [Model Path Types](/api/model-path#types) - ModelPathConfig types

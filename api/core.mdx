@@ -1,0 +1,273 @@
+---
+title: Core Functions
+description: Core initialization and hardware acceleration detection functions
+---
+
+This module provides core functionality for testing library initialization and detecting hardware acceleration support on different platforms.
+
+## testSherpaInit()
+
+Test method to verify that the sherpa-onnx native library is loaded correctly.
+
+```typescript
+function testSherpaInit(): Promise<string>
+```
+
+### Returns
+
+<ResponseField name="Promise<string>" type="string">
+  Resolves with a test message confirming the library is loaded.
+</ResponseField>
+
+### Example
+
+```typescript
+import { testSherpaInit } from 'react-native-sherpa-onnx';
+
+const result = await testSherpaInit();
+console.log(result); // "Sherpa ONNX initialized successfully"
+```
+
+---
+
+## getQnnSupport()
+
+Check Qualcomm QNN (Qualcomm Neural Network) acceleration support on Android devices.
+
+```typescript
+function getQnnSupport(modelBase64?: string): Promise<AccelerationSupport>
+```
+
+### Parameters
+
+<ParamField path="modelBase64" type="string" optional>
+  Optional base64-encoded model for session initialization test. If omitted, uses an embedded test model.
+</ParamField>
+
+### Returns
+
+<ResponseField name="AccelerationSupport" type="object">
+  <Expandable title="properties">
+    <ResponseField name="providerCompiled" type="boolean">
+      Whether QNN provider is compiled into the library
+    </ResponseField>
+    <ResponseField name="hasAccelerator" type="boolean">
+      Whether a QNN-compatible hardware accelerator is available
+    </ResponseField>
+    <ResponseField name="canInit" type="boolean">
+      Whether a model can be initialized using QNN
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Platform Support
+
+- **Android**: Full support on Qualcomm devices
+- **iOS**: Returns all false
+
+### Example
+
+```typescript
+import { getQnnSupport } from 'react-native-sherpa-onnx';
+
+const qnnSupport = await getQnnSupport();
+if (qnnSupport.canInit) {
+  console.log('QNN acceleration available');
+  // Use provider: 'qnn' in model options
+}
+```
+
+---
+
+## getNnapiSupport()
+
+Check NNAPI (Android Neural Networks API) acceleration support on Android devices.
+
+```typescript
+function getNnapiSupport(modelBase64?: string): Promise<AccelerationSupport>
+```
+
+### Parameters
+
+<ParamField path="modelBase64" type="string" optional>
+  Optional base64-encoded model for session initialization test.
+</ParamField>
+
+### Returns
+
+<ResponseField name="AccelerationSupport" type="object">
+  See [getQnnSupport()](#getqnnsupport) for structure.
+</ResponseField>
+
+### Platform Support
+
+- **Android**: Support varies by device and Android version
+- **iOS**: Returns all false
+
+### Example
+
+```typescript
+import { getNnapiSupport } from 'react-native-sherpa-onnx';
+
+const nnapiSupport = await getNnapiSupport();
+if (nnapiSupport.canInit) {
+  // Use provider: 'nnapi' in model options
+}
+```
+
+---
+
+## getXnnpackSupport()
+
+Check XNNPACK (CPU-optimized) acceleration support.
+
+```typescript
+function getXnnpackSupport(modelBase64?: string): Promise<AccelerationSupport>
+```
+
+### Parameters
+
+<ParamField path="modelBase64" type="string" optional>
+  Optional base64-encoded model for session initialization test.
+</ParamField>
+
+### Returns
+
+<ResponseField name="AccelerationSupport" type="object">
+  <Expandable title="properties">
+    <ResponseField name="providerCompiled" type="boolean">
+      Whether XNNPACK provider is compiled into the library
+    </ResponseField>
+    <ResponseField name="hasAccelerator" type="boolean">
+      Returns true when providerCompiled is true (CPU-optimized execution)
+    </ResponseField>
+    <ResponseField name="canInit" type="boolean">
+      Whether a model can be initialized using XNNPACK
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Platform Support
+
+- **Android**: Full support (CPU-optimized inference)
+- **iOS**: Returns all false
+
+### Example
+
+```typescript
+import { getXnnpackSupport } from 'react-native-sherpa-onnx';
+
+const xnnpackSupport = await getXnnpackSupport();
+if (xnnpackSupport.canInit) {
+  // Use provider: 'xnnpack' in model options
+}
+```
+
+---
+
+## getCoreMlSupport()
+
+Check Core ML acceleration support on iOS devices with Apple Neural Engine.
+
+```typescript
+function getCoreMlSupport(modelBase64?: string): Promise<AccelerationSupport>
+```
+
+### Parameters
+
+<ParamField path="modelBase64" type="string" optional>
+  Optional base64-encoded model for session initialization test.
+</ParamField>
+
+### Returns
+
+<ResponseField name="AccelerationSupport" type="object">
+  <Expandable title="properties">
+    <ResponseField name="providerCompiled" type="boolean">
+      True on iOS 11+ (Core ML framework available)
+    </ResponseField>
+    <ResponseField name="hasAccelerator" type="boolean">
+      True when Apple Neural Engine is available (A11+ chips)
+    </ResponseField>
+    <ResponseField name="canInit" type="boolean">
+      Whether a model can be initialized using Core ML
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Platform Support
+
+- **iOS**: Full support on iOS 11+ with Apple Neural Engine
+- **Android**: Returns all false
+
+### Example
+
+```typescript
+import { getCoreMlSupport } from 'react-native-sherpa-onnx';
+
+const coreMLSupport = await getCoreMlSupport();
+if (coreMLSupport.hasAccelerator) {
+  console.log('Apple Neural Engine available');
+  // Use provider: 'coreml' in model options
+}
+```
+
+---
+
+## getAvailableProviders()
+
+Get the list of available ONNX Runtime execution providers on the current device.
+
+```typescript
+function getAvailableProviders(): Promise<string[]>
+```
+
+### Returns
+
+<ResponseField name="Promise<string[]>" type="string[]">
+  Array of provider names (e.g., `["CPU", "NNAPI", "QNN", "XNNPACK"]`).
+</ResponseField>
+
+### Platform Support
+
+Requires the ONNX Runtime Java bridge from the onnxruntime AAR.
+
+### Example
+
+```typescript
+import { getAvailableProviders } from 'react-native-sherpa-onnx';
+
+const providers = await getAvailableProviders();
+console.log('Available providers:', providers);
+// ["CPU", "XNNPACK", "QNN"] on Qualcomm Android
+// ["CPU", "CoreML"] on iOS with Neural Engine
+```
+
+---
+
+## Types
+
+### AccelerationSupport
+
+Result type for hardware acceleration queries.
+
+```typescript
+interface AccelerationSupport {
+  /** Whether the provider is compiled into the library */
+  providerCompiled: boolean;
+  
+  /** Whether compatible hardware accelerator is available */
+  hasAccelerator: boolean;
+  
+  /** Whether a model session can be initialized with this provider */
+  canInit: boolean;
+}
+```
+
+---
+
+## See Also
+
+- [Model Path Utilities](/api/model-path) - Utilities for resolving model paths
+- [STT API](/api/stt/create-stt) - Speech-to-text API
+- [TTS API](/api/tts/create-tts) - Text-to-speech API

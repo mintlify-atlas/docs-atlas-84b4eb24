@@ -1,0 +1,425 @@
+---
+title: Other TTS Models
+description: KittenTTS, Zipvoice (voice cloning), and Pocket (flow-matching) models
+---
+
+# Other TTS Models
+
+This page covers additional TTS model types including lightweight KittenTTS, voice cloning with Zipvoice, and flow-matching Pocket models.
+
+## Overview
+
+<CardGroup cols={3}>
+  <Card title="KittenTTS" icon="cat">
+    Lightweight, multi-speaker TTS
+  </Card>
+  <Card title="Zipvoice" icon="microphone">
+    Zero-shot voice cloning
+  </Card>
+  <Card title="Pocket" icon="wand-magic-sparkles">
+    Flow-matching TTS with voice cloning
+  </Card>
+</CardGroup>
+
+---
+
+## KittenTTS
+
+**`modelType: 'kitten'`**
+
+### Description
+
+KittenTTS is a **lightweight, fast, multi-speaker** TTS model optimized for resource-constrained devices.
+
+### Characteristics
+
+- **Streaming**: ✅ Yes
+- **Quality**: ⭐⭐⭐ Good
+- **Speed**: ⭐⭐⭐⭐⭐ Very Fast
+- **Memory**: ⭐⭐⭐⭐⭐ Very Low
+- **Size**: Very Small (typically 10-30 MB)
+- **Multi-Speaker**: ✅ Yes
+
+### Configuration
+
+```typescript
+import { createTTS } from 'react-native-sherpa-onnx/tts';
+
+const tts = await createTTS({
+  modelPath: {
+    type: 'asset',
+    path: 'models/kitten-tts-en'
+  },
+  modelType: 'kitten', // or 'auto'
+  numThreads: 2,
+});
+
+const audio = await tts.generateSpeech('Hello from KittenTTS!');
+console.log('Generated:', audio.samples.length, 'samples');
+
+await tts.destroy();
+```
+
+### Streaming Example
+
+```typescript
+const sampleRate = await tts.getSampleRate();
+await tts.startPcmPlayer(sampleRate, 1);
+
+await tts.generateSpeechStream('Fast streaming speech', { sid: 0, speed: 1.0 }, {
+  onChunk: async (chunk) => {
+    await tts.writePcmChunk(chunk.samples);
+  },
+  onEnd: async () => {
+    await tts.stopPcmPlayer();
+  },
+});
+```
+
+### Download
+
+<Card title="KittenTTS Models" icon="download" href="https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models">
+  Download KittenTTS models
+</Card>
+
+### Model Detection
+
+- Folder name should contain `kitten` (not `kokoro`)
+- Files: `model.onnx`, `tokens.txt`
+
+### When to Use
+
+<CardGroup cols={2}>
+  <Card title="Low-End Devices" icon="mobile">
+    Resource-constrained mobile devices
+  </Card>
+  <Card title="Fast Response" icon="bolt">
+    Applications requiring minimal latency
+  </Card>
+  <Card title="Battery Efficiency" icon="battery-full">
+    Low power consumption for longer battery life
+  </Card>
+  <Card title="Embedded Systems" icon="microchip">
+    IoT devices with limited resources
+  </Card>
+</CardGroup>
+
+### Advantages
+
+1. **Very Fast**: Fastest TTS model available
+2. **Very Small**: Minimal storage footprint
+3. **Low Memory**: Runs on constrained devices
+4. **Streaming**: Low-latency incremental generation
+5. **Multi-Speaker**: Multiple voices in one model
+
+### Limitations
+
+1. **Quality**: Good but not as natural as VITS or Matcha
+2. **Limited Languages**: Fewer language options
+3. **No Voice Cloning**: Fixed voice set only
+
+---
+
+## Zipvoice
+
+**`modelType: 'zipvoice'`**
+
+### Description
+
+Zipvoice is a **zero-shot voice cloning** model that can synthesize speech in any voice from a short reference audio sample.
+
+### Characteristics
+
+- **Streaming**: ❌ No (batch only for voice cloning)
+- **Quality**: ⭐⭐⭐⭐⭐ Excellent
+- **Speed**: ⭐⭐⭐ Medium
+- **Memory**: ⭐⭐ High (requires significant RAM)
+- **Size**: Large (~605 MB for full model)
+- **Voice Cloning**: ✅ Yes
+
+### Architecture
+
+Zipvoice uses a three-stage pipeline:
+- **Encoder** – Encodes reference audio
+- **Decoder** (flow-matching) – Generates mel-spectrogram
+- **Vocoder** (e.g. `vocos_24khz.onnx`) – Converts to waveform
+
+<Warning>
+  **Vocoder Required**: Zipvoice **requires a vocoder** (e.g. `vocos_24khz.onnx`). "Distill" models with only encoder + decoder will fail during initialization.
+</Warning>
+
+### Configuration
+
+```typescript
+import { createTTS } from 'react-native-sherpa-onnx/tts';
+
+const tts = await createTTS({
+  modelPath: {
+    type: 'asset',
+    path: 'models/sherpa-onnx-zipvoice-zh-en-emilia'
+  },
+  modelType: 'zipvoice',
+  numThreads: 4,
+});
+
+// Voice cloning with reference audio
+const audio = await tts.generateSpeech('Target text to speak in reference voice', {
+  referenceAudio: {
+    samples: referenceSamples,  // float[] from reference audio
+    sampleRate: 22050,
+  },
+  referenceText: 'Transcript of the reference audio',
+  numSteps: 20,  // Flow-matching steps (higher = better quality)
+  speed: 1.0,
+});
+
+await tts.destroy();
+```
+
+### Memory Requirements
+
+<Warning>
+  **High Memory Usage**: Full Zipvoice models (~605 MB) require substantial RAM:
+  - **Recommended**: 8+ GB device RAM
+  - **Minimum**: ~800 MB free memory
+  
+  For devices with **less than 8 GB RAM**, use the **int8 distill variant**: `sherpa-onnx-zipvoice-distill-int8-zh-en-emilia` (~104 MB).
+  
+  The SDK checks free memory before loading and rejects with an error if insufficient.
+</Warning>
+
+### Download
+
+<Card title="Zipvoice Models" icon="download" href="https://k2-fsa.github.io/sherpa/onnx/tts/pretrained_models/zipvoice.html">
+  Download Zipvoice models (full and int8 distill variants)
+</Card>
+
+### Model Detection
+
+Zipvoice is detected by file layout:
+- Encoder + decoder + vocoder files
+- Optional folder name pattern (containing `zipvoice`)
+- Files: encoder, decoder, `vocos_*.onnx` (vocoder), `tokens.txt`, `lexicon.txt`, `espeak-ng-data`
+
+### When to Use
+
+<CardGroup cols={2}>
+  <Card title="Custom Voices" icon="microphone">
+    Synthesize speech in any voice from reference audio
+  </Card>
+  <Card title="Voice Cloning Apps" icon="clone">
+    Apps that need user-specific voice synthesis
+  </Card>
+  <Card title="Dubbing & Translation" icon="globe">
+    Translate content while preserving original voice
+  </Card>
+  <Card title="Personalization" icon="user">
+    Personalized voice experiences
+  </Card>
+</CardGroup>
+
+### Advantages
+
+1. **Zero-Shot Voice Cloning**: Clone any voice from short audio
+2. **Excellent Quality**: Very natural-sounding output
+3. **Flexible**: Works with various reference voices
+4. **Multilingual**: Supports Chinese and English
+
+### Limitations
+
+1. **High Memory**: Full model needs 8+ GB device RAM
+2. **No Streaming**: Voice cloning only supports batch generation
+3. **Large Size**: ~605 MB (use int8 distill variant for smaller size)
+4. **Slower**: Flow-matching is computationally intensive
+5. **Requires Vocoder**: Distill-only models (no vocoder) will fail
+
+### Reference Audio Requirements
+
+- **Format**: Mono, float PCM samples in [-1, 1]
+- **Sample Rate**: Typically 22050 Hz or 24000 Hz
+- **Duration**: 3-10 seconds recommended
+- **Quality**: Clear speech, minimal background noise
+- **Transcript**: Must provide accurate transcript of reference audio
+
+---
+
+## Pocket
+
+**`modelType: 'pocket'`**
+
+### Description
+
+Pocket is a **flow-matching TTS model** that supports both standard synthesis and voice cloning with reference audio.
+
+### Characteristics
+
+- **Streaming**: ✅ Yes (including with reference audio for Kotlin-engine models)
+- **Quality**: ⭐⭐⭐⭐ High
+- **Speed**: ⭐⭐⭐⭐ Fast
+- **Memory**: ⭐⭐⭐ Moderate
+- **Size**: Medium
+- **Voice Cloning**: ✅ Yes
+
+### Configuration
+
+```typescript
+import { createTTS } from 'react-native-sherpa-onnx/tts';
+
+const tts = await createTTS({
+  modelPath: {
+    type: 'asset',
+    path: 'models/pocket-tts'
+  },
+  modelType: 'pocket', // or 'auto'
+  numThreads: 2,
+});
+
+// Standard generation
+const audio1 = await tts.generateSpeech('Hello from Pocket TTS');
+
+// Voice cloning with reference audio
+const audio2 = await tts.generateSpeech('Target text', {
+  referenceAudio: { samples: refSamples, sampleRate: 22050 },
+  referenceText: 'Reference transcript',
+  numSteps: 20,
+  extra: {
+    temperature: '0.7',
+    chunk_size: '15',
+  },
+});
+
+await tts.destroy();
+```
+
+### Streaming with Voice Cloning
+
+Unlike Zipvoice, Pocket supports streaming even with reference audio:
+
+```typescript
+await tts.generateSpeechStream('Target text', {
+  referenceAudio: { samples: refSamples, sampleRate: 22050 },
+  referenceText: 'Reference transcript',
+  numSteps: 20,
+}, {
+  onChunk: async (chunk) => {
+    await tts.writePcmChunk(chunk.samples);
+  },
+});
+```
+
+### Extra Options
+
+Pocket accepts model-specific options via the `extra` parameter:
+
+```typescript
+const audio = await tts.generateSpeech('Text', {
+  sid: 0,
+  speed: 1.0,
+  numSteps: 20,
+  extra: {
+    temperature: '0.7',    // Sampling temperature
+    chunk_size: '15',      // Processing chunk size
+    // Add other model-specific options as needed
+  },
+});
+```
+
+### Download
+
+<Card title="Pocket Models" icon="download" href="https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models">
+  Download Pocket TTS models
+</Card>
+
+### Model Detection
+
+Pocket is detected by file layout:
+- Files: `lm_flow`, `lm_main`, `text_conditioner`, `vocab/token_scores`
+- No folder name pattern required
+
+### When to Use
+
+<CardGroup cols={2}>
+  <Card title="Voice Cloning + Streaming" icon="bolt">
+    Need both voice cloning and low-latency streaming
+  </Card>
+  <Card title="Modern Architecture" icon="sparkles">
+    Flow-matching for high-quality synthesis
+  </Card>
+  <Card title="Flexible Options" icon="sliders">
+    Fine-grained control with extra parameters
+  </Card>
+  <Card title="Interactive Apps" icon="robot">
+    Real-time custom voice applications
+  </Card>
+</CardGroup>
+
+### Advantages
+
+1. **Streaming + Voice Cloning**: Supports both simultaneously
+2. **Flow-Matching**: Modern architecture for quality
+3. **Fast**: Good performance with streaming
+4. **Flexible**: Extra options for fine-tuning
+5. **Good Quality**: Natural-sounding speech
+
+### Limitations
+
+1. **Newer**: Less battle-tested than VITS or Zipvoice
+2. **Documentation**: Fewer examples and resources
+3. **Model Availability**: Fewer pretrained models
+
+---
+
+## Comparison Table
+
+| Feature | KittenTTS | Zipvoice | Pocket |
+|---------|-----------|----------|--------|
+| **Speed** | Very Fast | Medium | Fast |
+| **Quality** | Good | Excellent | High |
+| **Streaming** | Yes | No | Yes |
+| **Voice Cloning** | No | Yes | Yes |
+| **Model Size** | Very Small | Large | Medium |
+| **Memory** | Very Low | High | Moderate |
+| **Best For** | Low-end devices | High-quality cloning | Streaming + cloning |
+
+---
+
+## Choosing Between Models
+
+### For Voice Cloning
+
+- **Zipvoice** – Best quality, batch generation only, high memory
+- **Pocket** – Streaming support, good quality, moderate memory
+
+### For Speed
+
+- **KittenTTS** – Fastest, lightweight
+- **Pocket** – Fast with streaming
+
+### For Low-End Devices
+
+- **KittenTTS** – Minimal resources
+- **Zipvoice int8 distill** – If voice cloning is needed
+
+### For High Quality
+
+- **Zipvoice** – Excellent voice cloning quality
+- **Pocket** – Good quality with more flexibility
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="TTS Overview" icon="list" href="/models/tts/overview">
+    Compare all TTS model types
+  </Card>
+  <Card title="TTS API" icon="code" href="/api/tts">
+    Detailed API documentation
+  </Card>
+  <Card title="Streaming TTS" icon="waveform" href="/api/streaming-tts">
+    Low-latency streaming guide
+  </Card>
+  <Card title="Model Setup" icon="download" href="/model-setup">
+    How to download and bundle models
+  </Card>
+</CardGroup>

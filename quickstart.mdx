@@ -1,80 +1,628 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick Start
+description: Get started with react-native-sherpa-onnx in minutes with complete working examples
 ---
 
-## Get started in three steps
+# Quick Start
 
-Get your documentation site running locally and make your first customization.
+Get up and running with react-native-sherpa-onnx by building a simple speech-to-text or text-to-speech example.
 
-### Step 1: Set up your local environment
+<Note>
+  This guide assumes you've already [installed](/installation) the library and configured your platforms.
+</Note>
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
+## Choose Your Use Case
 
 <CardGroup cols={2}>
+  <Card title="Speech-to-Text" icon="microphone" href="#speech-to-text-example">
+    Transcribe audio files to text
+  </Card>
+  <Card title="Text-to-Speech" icon="volume-high" href="#text-to-speech-example">
+    Generate speech from text
+  </Card>
+</CardGroup>
 
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
+---
 
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
+## Speech-to-Text Example
 
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
+Transcribe an audio file to text using offline STT.
 
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
+### Step 1: Download a Model
 
+First, download a pre-trained model. For this example, we'll use a small English Whisper model:
+
+<Steps>
+
+<Step title="Download the model">
+
+Download the **sherpa-onnx-whisper-tiny.en** model from [sherpa-onnx releases](https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models):
+
+```bash
+# Download and extract
+curl -LO https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-tiny.en.tar.bz2
+tar xvf sherpa-onnx-whisper-tiny.en.tar.bz2
+```
+
+</Step>
+
+<Step title="Add to your project">
+
+Copy the extracted model folder to your app's assets:
+
+```
+android/app/src/main/assets/models/whisper-tiny/
+ios/YourApp/models/whisper-tiny/
+```
+
+Or place it in a location accessible via the file system.
+
+</Step>
+
+</Steps>
+
+### Step 2: Create the STT Engine
+
+Create a file `SpeechToText.tsx`:
+
+```typescript SpeechToText.tsx
+import React, { useEffect, useState } from 'react';
+import { View, Text, Button, StyleSheet, ActivityIndicator } from 'react-native';
+import { createSTT, type SttEngine } from 'react-native-sherpa-onnx/stt';
+
+export default function SpeechToText() {
+  const [sttEngine, setSttEngine] = useState<SttEngine | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<string>('');
+  const [error, setError] = useState<string>('');
+
+  // Initialize the STT engine on mount
+  useEffect(() => {
+    initializeSTT();
+    return () => {
+      // Clean up on unmount
+      sttEngine?.destroy();
+    };
+  }, []);
+
+  const initializeSTT = async () => {
+    setLoading(true);
+    setError('');
+    
+    try {
+      // Create STT engine with asset model
+      const engine = await createSTT({
+        modelPath: {
+          type: 'asset',
+          path: 'models/whisper-tiny',
+        },
+        modelType: 'whisper', // Specify model type (optional with auto-detection)
+        numThreads: 2,
+      });
+      
+      setSttEngine(engine);
+      console.log('✓ STT engine initialized');
+    } catch (err) {
+      setError(`Failed to initialize: ${err}`);
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const transcribeAudio = async () => {
+    if (!sttEngine) {
+      setError('STT engine not initialized');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setResult('');
+
+    try {
+      // Transcribe an audio file
+      // Note: Replace with your actual audio file path
+      const audioPath = '/path/to/your/audio.wav';
+      
+      const transcription = await sttEngine.transcribeFile(audioPath);
+      setResult(transcription.text);
+      
+      console.log('Transcription:', transcription.text);
+      console.log('Tokens:', transcription.tokens);
+      console.log('Timestamps:', transcription.timestamps);
+    } catch (err) {
+      setError(`Transcription failed: ${err}`);
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>Speech-to-Text</Text>
+      
+      {loading && <ActivityIndicator size="large" />}
+      
+      {error ? (
+        <Text style={styles.error}>{error}</Text>
+      ) : null}
+      
+      <Button
+        title="Transcribe Audio"
+        onPress={transcribeAudio}
+        disabled={!sttEngine || loading}
+      />
+      
+      {result ? (
+        <View style={styles.resultContainer}>
+          <Text style={styles.resultLabel}>Result:</Text>
+          <Text style={styles.resultText}>{result}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    padding: 20,
+    justifyContent: 'center',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  error: {
+    color: 'red',
+    marginVertical: 10,
+  },
+  resultContainer: {
+    marginTop: 20,
+    padding: 15,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 8,
+  },
+  resultLabel: {
+    fontWeight: 'bold',
+    marginBottom: 5,
+  },
+  resultText: {
+    fontSize: 16,
+  },
+});
+```
+
+### Step 3: Transcribe from Samples
+
+You can also transcribe audio samples directly:
+
+```typescript
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+
+// Initialize engine
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/whisper-tiny' },
+  modelType: 'whisper',
+});
+
+// Transcribe audio samples (Float32Array or number[])
+const samples = new Float32Array([/* your audio samples */]);
+const sampleRate = 16000; // Must match your audio sample rate
+
+const result = await stt.transcribeSamples(Array.from(samples), sampleRate);
+console.log('Transcription:', result.text);
+
+// Clean up
+await stt.destroy();
+```
+
+<Info>
+  **Audio format requirements**: The audio must be 16-bit PCM WAV format. For samples, provide normalized float values between -1.0 and 1.0.
+</Info>
+
+---
+
+## Text-to-Speech Example
+
+Generate natural-sounding speech from text.
+
+### Step 1: Download a TTS Model
+
+<Steps>
+
+<Step title="Download the model">
+
+Download a VITS model (e.g., **vits-piper-en_US-lessac-medium**):
+
+```bash
+curl -LO https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-lessac-medium.tar.bz2
+tar xvf vits-piper-en_US-lessac-medium.tar.bz2
+```
+
+</Step>
+
+<Step title="Add to your project">
+
+Copy the model folder to your assets:
+
+```
+android/app/src/main/assets/models/vits-piper-en/
+ios/YourApp/models/vits-piper-en/
+```
+
+</Step>
+
+</Steps>
+
+### Step 2: Create the TTS Engine
+
+Create a file `TextToSpeech.tsx`:
+
+```typescript TextToSpeech.tsx
+import React, { useEffect, useState } from 'react';
+import { View, Text, TextInput, Button, StyleSheet, ActivityIndicator } from 'react-native';
+import { createTTS, type TtsEngine, saveAudioToFile } from 'react-native-sherpa-onnx/tts';
+import { DocumentDirectoryPath } from '@dr.pogodin/react-native-fs';
+
+export default function TextToSpeech() {
+  const [ttsEngine, setTtsEngine] = useState<TtsEngine | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [inputText, setInputText] = useState('Hello, world! This is a test of text to speech.');
+  const [audioPath, setAudioPath] = useState<string>('');
+  const [error, setError] = useState<string>('');
+
+  useEffect(() => {
+    initializeTTS();
+    return () => {
+      ttsEngine?.destroy();
+    };
+  }, []);
+
+  const initializeTTS = async () => {
+    setLoading(true);
+    setError('');
+    
+    try {
+      const engine = await createTTS({
+        modelPath: {
+          type: 'asset',
+          path: 'models/vits-piper-en',
+        },
+        modelType: 'vits',
+        numThreads: 2,
+        modelOptions: {
+          vits: {
+            noiseScale: 0.667,
+            lengthScale: 1.0,
+          },
+        },
+      });
+      
+      setTtsEngine(engine);
+      
+      // Get model info
+      const info = await engine.getModelInfo();
+      console.log('✓ TTS initialized:', info);
+    } catch (err) {
+      setError(`Failed to initialize: ${err}`);
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const generateSpeech = async () => {
+    if (!ttsEngine) {
+      setError('TTS engine not initialized');
+      return;
+    }
+
+    if (!inputText.trim()) {
+      setError('Please enter some text');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setAudioPath('');
+
+    try {
+      // Generate audio from text
+      const audio = await ttsEngine.generateSpeech(inputText, {
+        speed: 1.0, // Speech speed (0.5 - 2.0)
+        sid: 0,     // Speaker ID (if multi-speaker model)
+      });
+      
+      console.log('Generated audio:', audio.samples.length, 'samples @', audio.sampleRate, 'Hz');
+      
+      // Save to file
+      const outputPath = `${DocumentDirectoryPath}/output.wav`;
+      await saveAudioToFile(audio, outputPath);
+      
+      setAudioPath(outputPath);
+      console.log('✓ Audio saved to:', outputPath);
+    } catch (err) {
+      setError(`Generation failed: ${err}`);
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>Text-to-Speech</Text>
+      
+      <TextInput
+        style={styles.input}
+        value={inputText}
+        onChangeText={setInputText}
+        placeholder="Enter text to speak..."
+        multiline
+      />
+      
+      {loading && <ActivityIndicator size="large" />}
+      
+      {error ? (
+        <Text style={styles.error}>{error}</Text>
+      ) : null}
+      
+      <Button
+        title="Generate Speech"
+        onPress={generateSpeech}
+        disabled={!ttsEngine || loading}
+      />
+      
+      {audioPath ? (
+        <View style={styles.resultContainer}>
+          <Text style={styles.resultLabel}>✓ Audio generated!</Text>
+          <Text style={styles.resultText}>Saved to: {audioPath}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    padding: 20,
+    justifyContent: 'center',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 20,
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  error: {
+    color: 'red',
+    marginVertical: 10,
+  },
+  resultContainer: {
+    marginTop: 20,
+    padding: 15,
+    backgroundColor: '#e8f5e9',
+    borderRadius: 8,
+  },
+  resultLabel: {
+    fontWeight: 'bold',
+    marginBottom: 5,
+    color: '#2e7d32',
+  },
+  resultText: {
+    fontSize: 14,
+    color: '#555',
+  },
+});
+```
+
+### Step 3: Generate with Timestamps
+
+For subtitle generation or precise timing control:
+
+```typescript
+import { createTTS } from 'react-native-sherpa-onnx/tts';
+
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper-en' },
+});
+
+const result = await tts.generateSpeechWithTimestamps(
+  'Hello world. This is a test.',
+  { speed: 1.0 }
+);
+
+console.log('Audio:', result.samples.length, 'samples');
+console.log('Subtitles:', result.subtitles);
+// [
+//   { text: 'Hello world.', start: 0.0, end: 1.2 },
+//   { text: 'This is a test.', start: 1.2, end: 2.5 }
+// ]
+
+await tts.destroy();
+```
+
+---
+
+## Streaming Speech-to-Text
+
+For real-time transcription from a microphone:
+
+```typescript StreamingSTT.tsx
+import { createStreamingSTT } from 'react-native-sherpa-onnx/stt';
+import { createPcmLiveStream } from 'react-native-sherpa-onnx/audio';
+
+// Create streaming STT engine (use streaming-capable model)
+const engine = await createStreamingSTT({
+  modelPath: {
+    type: 'asset',
+    path: 'models/streaming-zipformer-en',
+  },
+  modelType: 'transducer', // transducer, paraformer, nemo_ctc, or tone_ctc
+  enableEndpoint: true, // Enable automatic endpoint detection
+});
+
+// Create a stream for recognition
+const stream = await engine.createStream();
+
+// Create PCM live stream for microphone capture
+const pcmStream = await createPcmLiveStream({
+  sampleRate: 16000,
+  onData: async (event) => {
+    // Feed audio to the recognition stream
+    await stream.acceptWaveform(event.data, event.sampleRate);
+    
+    // Decode if ready
+    if (await stream.isReady()) {
+      await stream.decode();
+    }
+    
+    // Get partial results
+    const result = await stream.getResult();
+    if (result.text) {
+      console.log('Partial:', result.text);
+    }
+    
+    // Check for endpoint (natural pause)
+    if (await stream.isEndpoint()) {
+      const finalResult = await stream.getResult();
+      console.log('Final:', finalResult.text);
+      
+      // Reset for next utterance
+      await stream.reset();
+    }
+  },
+});
+
+// Start recording
+await pcmStream.start();
+
+// Later: stop recording
+await pcmStream.stop();
+
+// Clean up
+await stream.release();
+await engine.destroy();
+```
+
+<Tip>
+  For streaming STT, use models with streaming support: `transducer`, `paraformer`, `nemo_ctc`, `zipformer2_ctc`, or `tone_ctc`.
+</Tip>
+
+---
+
+## Key API Patterns
+
+### Initialization
+
+All engines use an instance-based API:
+
+```typescript
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+import { createTTS } from 'react-native-sherpa-onnx/tts';
+
+// Create engine
+const stt = await createSTT({ modelPath: { type: 'asset', path: 'model' } });
+const tts = await createTTS({ modelPath: { type: 'asset', path: 'model' } });
+
+// Use engine
+const result = await stt.transcribeFile('/path/to/audio.wav');
+const audio = await tts.generateSpeech('Hello world');
+
+// Always destroy when done
+await stt.destroy();
+await tts.destroy();
+```
+
+### Model Path Types
+
+<CodeGroup>
+
+```typescript Asset Model
+// Model bundled in app assets
+const modelPath = {
+  type: 'asset',
+  path: 'models/whisper-tiny', // Relative to assets root
+};
+```
+
+```typescript File System Model
+// Model on file system
+const modelPath = {
+  type: 'file',
+  path: '/full/path/to/model/directory',
+};
+```
+
+```typescript Auto-Detection
+// Auto-detect model location
+const modelPath = {
+  type: 'auto',
+  path: 'whisper-tiny', // Search in assets and file system
+};
+```
+
+</CodeGroup>
+
+### Detecting Model Types
+
+Auto-detect model architecture without initialization:
+
+```typescript
+import { detectSttModel, detectTtsModel } from 'react-native-sherpa-onnx/stt';
+
+const sttResult = await detectSttModel(
+  { type: 'asset', path: 'models/whisper-tiny' }
+);
+
+if (sttResult.success) {
+  console.log('Detected STT model type:', sttResult.modelType);
+  console.log('Detected models:', sttResult.detectedModels);
+}
+
+const ttsResult = await detectTtsModel(
+  { type: 'asset', path: 'models/vits-piper-en' }
+);
+
+if (ttsResult.success) {
+  console.log('Detected TTS model type:', ttsResult.modelType);
+}
+```
+
+---
+
+## What's Next?
+
+<CardGroup cols={2}>
+  <Card title="STT Deep Dive" icon="microphone" href="/features/speech-to-text">
+    Learn about offline and streaming STT
+  </Card>
+  <Card title="TTS Deep Dive" icon="volume-high" href="/features/text-to-speech">
+    Explore TTS features and streaming
+  </Card>
+  <Card title="Model Setup" icon="database" href="/features/model-setup">
+    Bundle models and use Play Asset Delivery
+  </Card>
+  <Card title="Execution Providers" icon="chip" href="/features/execution-providers">
+    Accelerate with NNAPI, QNN, Core ML
+  </Card>
 </CardGroup>
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  Check out the [Example App](https://github.com/XDcobra/react-native-sherpa-onnx/tree/main/example) for more complete examples including model selection, streaming, and UI patterns.
 </Note>

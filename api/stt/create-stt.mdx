@@ -1,0 +1,295 @@
+---
+title: createSTT()
+description: Create an offline (batch) speech-to-text engine
+---
+
+Create an STT engine instance for batch/offline transcription. This is ideal for transcribing complete audio files or recorded audio samples.
+
+For real-time streaming recognition, use [createStreamingSTT()](/api/stt/streaming-stt) instead.
+
+```typescript
+function createSTT(
+  options: STTInitializeOptions | ModelPathConfig
+): Promise<SttEngine>
+```
+
+## Parameters
+
+<ParamField path="options" type="STTInitializeOptions | ModelPathConfig" required>
+  Initialization options or a model path configuration.
+  
+  <Expandable title="STTInitializeOptions properties">
+    <ParamField path="modelPath" type="ModelPathConfig" required>
+      Model directory path configuration. Use `assetModelPath()`, `fileModelPath()`, or `autoModelPath()`.
+    </ParamField>
+    
+    <ParamField path="modelType" type="STTModelType" default="auto">
+      Explicit model type. Options: `'transducer'`, `'paraformer'`, `'whisper'`, `'nemo_ctc'`, `'zipformer_ctc'`, `'sense_voice'`, `'funasr_nano'`, `'fire_red_asr'`, `'moonshine'`, `'dolphin'`, `'canary'`, `'omnilingual'`, `'medasr'`, `'telespeech_ctc'`, or `'auto'` for automatic detection.
+    </ParamField>
+    
+    <ParamField path="preferInt8" type="boolean" optional>
+      Model quantization preference:
+      - `true`: Prefer int8 quantized models (smaller, faster)
+      - `false`: Prefer regular models (higher accuracy)
+      - `undefined`: Try int8 first, fall back to regular (default)
+    </ParamField>
+    
+    <ParamField path="debug" type="boolean" default={false}>
+      Enable debug logging in native layer and sherpa-onnx.
+    </ParamField>
+    
+    <ParamField path="hotwordsFile" type="string" optional>
+      Path to hotwords file for keyword boosting (transducer/nemo_transducer only).
+    </ParamField>
+    
+    <ParamField path="hotwordsScore" type="number" default={1.5}>
+      Hotwords score/weight for contextual biasing.
+    </ParamField>
+    
+    <ParamField path="modelingUnit" type="'cjkchar' | 'bpe' | 'cjkchar+bpe'" optional>
+      Modeling unit for hotwords tokenization (transducer/nemo_transducer only). Must match model training:
+      - `'bpe'`: English zipformer models
+      - `'cjkchar'`: Chinese conformer models
+      - `'cjkchar+bpe'`: Bilingual zh-en models
+    </ParamField>
+    
+    <ParamField path="bpeVocab" type="string" optional>
+      Path to BPE vocabulary file (`.vocab` export from sentencepiece). Required when `modelingUnit` is `'bpe'` or `'cjkchar+bpe'`.
+    </ParamField>
+    
+    <ParamField path="numThreads" type="number" default={1}>
+      Number of threads for inference.
+    </ParamField>
+    
+    <ParamField path="provider" type="string" optional>
+      Execution provider (e.g., `'cpu'`, `'coreml'`, `'xnnpack'`, `'nnapi'`, `'qnn'`). Use `getCoreMlSupport()`, etc. to check availability.
+    </ParamField>
+    
+    <ParamField path="ruleFsts" type="string" optional>
+      Path to rule FSTs for inverse text normalization.
+    </ParamField>
+    
+    <ParamField path="ruleFars" type="string" optional>
+      Path to rule FARs for inverse text normalization.
+    </ParamField>
+    
+    <ParamField path="dither" type="number" default={0}>
+      Dither value for feature extraction.
+    </ParamField>
+    
+    <ParamField path="modelOptions" type="SttModelOptions" optional>
+      Model-specific options (whisper, senseVoice, canary, funasrNano). Only options for the loaded model type are applied.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Returns
+
+<ResponseField name="Promise<SttEngine>" type="SttEngine">
+  A promise that resolves to an STT engine instance.
+  
+  <Expandable title="SttEngine interface">
+    <ResponseField name="instanceId" type="string">
+      Unique instance identifier.
+    </ResponseField>
+    
+    <ResponseField name="transcribeFile" type="(filePath: string) => Promise<SttRecognitionResult>">
+      Transcribe an audio file. Supports WAV, FLAC, MP3, etc.
+    </ResponseField>
+    
+    <ResponseField name="transcribeSamples" type="(samples: number[], sampleRate: number) => Promise<SttRecognitionResult>">
+      Transcribe PCM audio samples (float array in [-1, 1]).
+    </ResponseField>
+    
+    <ResponseField name="setConfig" type="(config: SttRuntimeConfig) => Promise<void>">
+      Update runtime configuration (decoding method, hotwords, etc.).
+    </ResponseField>
+    
+    <ResponseField name="destroy" type="() => Promise<void>">
+      Release native resources. Must be called when done.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { createSTT, assetModelPath } from 'react-native-sherpa-onnx/stt';
+
+// Create STT engine with asset model
+const stt = await createSTT({
+  modelPath: assetModelPath('models/whisper-tiny-en'),
+});
+
+// Transcribe an audio file
+const result = await stt.transcribeFile('/path/to/audio.wav');
+console.log('Transcription:', result.text);
+
+// Clean up
+await stt.destroy();
+```
+
+### With Auto-Detection
+
+```typescript
+import { createSTT, autoModelPath } from 'react-native-sherpa-onnx/stt';
+
+const stt = await createSTT({
+  modelPath: autoModelPath('models/sherpa-onnx-whisper-tiny'),
+  modelType: 'auto', // Automatically detect model type
+});
+
+const result = await stt.transcribeFile('recording.wav');
+console.log(result.text);
+await stt.destroy();
+```
+
+### With Downloaded Model
+
+```typescript
+import { createSTT, fileModelPath } from 'react-native-sherpa-onnx/stt';
+import { getLocalModelPathByCategory, ModelCategory } from 'react-native-sherpa-onnx/download';
+
+// Get path to downloaded model
+const modelPath = await getLocalModelPathByCategory(
+  ModelCategory.Stt,
+  'sherpa-onnx-whisper-tiny-en'
+);
+
+if (modelPath) {
+  const stt = await createSTT({
+    modelPath: fileModelPath(modelPath),
+  });
+  
+  const result = await stt.transcribeFile('audio.wav');
+  console.log(result.text);
+  await stt.destroy();
+}
+```
+
+### With Hotwords (Keyword Boosting)
+
+```typescript
+import { createSTT, assetModelPath } from 'react-native-sherpa-onnx/stt';
+
+const stt = await createSTT({
+  modelPath: assetModelPath('models/zipformer-transducer-en'),
+  modelType: 'transducer',
+  hotwordsFile: '/path/to/hotwords.txt', // One keyword per line
+  hotwordsScore: 2.0,
+  modelingUnit: 'bpe',
+  bpeVocab: '/path/to/bpe.vocab',
+});
+
+const result = await stt.transcribeFile('audio.wav');
+// Result will have higher confidence for keywords in hotwords file
+console.log(result.text);
+await stt.destroy();
+```
+
+### With Whisper Model Options
+
+```typescript
+import { createSTT, assetModelPath } from 'react-native-sherpa-onnx/stt';
+
+const stt = await createSTT({
+  modelPath: assetModelPath('models/whisper-base'),
+  modelType: 'whisper',
+  modelOptions: {
+    whisper: {
+      language: 'en',
+      task: 'transcribe', // or 'translate' for English translation
+      tailPaddings: 1000,
+    },
+  },
+});
+
+const result = await stt.transcribeFile('audio.wav');
+console.log(result.text);
+await stt.destroy();
+```
+
+### Transcribe PCM Samples
+
+```typescript
+import { createSTT, assetModelPath } from 'react-native-sherpa-onnx/stt';
+
+const stt = await createSTT({
+  modelPath: assetModelPath('models/whisper-tiny'),
+});
+
+// Assume samples is Float32Array or number[] of PCM audio in [-1, 1]
+const samples: number[] = [...]; // Your audio samples
+const sampleRate = 16000;
+
+const result = await stt.transcribeSamples(samples, sampleRate);
+console.log('Transcription:', result.text);
+console.log('Tokens:', result.tokens);
+console.log('Timestamps:', result.timestamps);
+
+await stt.destroy();
+```
+
+### With Hardware Acceleration
+
+```typescript
+import { 
+  createSTT, 
+  assetModelPath 
+} from 'react-native-sherpa-onnx/stt';
+import { getCoreMlSupport } from 'react-native-sherpa-onnx';
+
+// Check Core ML support on iOS
+const coreMLSupport = await getCoreMlSupport();
+
+const stt = await createSTT({
+  modelPath: assetModelPath('models/whisper-tiny'),
+  provider: coreMLSupport.canInit ? 'coreml' : 'cpu',
+  numThreads: 2,
+});
+
+const result = await stt.transcribeFile('audio.wav');
+console.log(result.text);
+await stt.destroy();
+```
+
+## Related Functions
+
+### detectSttModel()
+
+Detect STT model type without initializing the recognizer.
+
+```typescript
+function detectSttModel(
+  modelPath: ModelPathConfig,
+  options?: { preferInt8?: boolean; modelType?: STTModelType }
+): Promise<{
+  success: boolean;
+  detectedModels: Array<{ type: string; modelDir: string }>;
+  modelType?: string;
+}>
+```
+
+#### Example
+
+```typescript
+import { detectSttModel, assetModelPath } from 'react-native-sherpa-onnx/stt';
+
+const result = await detectSttModel(
+  assetModelPath('models/sherpa-onnx-whisper-tiny-en')
+);
+
+if (result.success) {
+  console.log('Detected type:', result.modelType);
+  console.log('Models found:', result.detectedModels);
+}
+```
+
+## See Also
+
+- [SttEngine Interface](/api/stt/types#sttengine) - Full interface documentation
+- [createStreamingSTT()](/api/stt/streaming-stt) - For real-time streaming recognition
+- [STT Types](/api/stt/types) - Complete type definitions
+- [Model Path Utilities](/api/model-path) - Working with model paths

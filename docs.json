@@ -1,122 +1,148 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "React Native Sherpa-ONNX",
+  "theme": "aspen",
+  "mode": "custom",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#848c8e",
+    "light": "#11161e",
+    "dark": "#cfd0d2"
   },
-  "favicon": "/favicon.svg",
+  "logo": {
+    "light": "https://media.brand.dev/5ffd6ce4-2434-4b4b-920a-f8cacac8b48b.svg",
+    "dark": "https://media.brand.dev/5ffd6ce4-2434-4b4b-920a-f8cacac8b48b.svg"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/XDcobra/react-native-sherpa-onnx"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/XDcobra/react-native-sherpa-onnx"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "introduction",
+              "installation",
+              "quickstart"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Features",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "features/speech-to-text",
+              "features/streaming-stt",
+              "features/text-to-speech",
+              "features/streaming-tts",
+              "features/model-setup",
+              "features/execution-providers"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Advanced",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "advanced/pcm-live-stream",
+              "advanced/download-manager",
+              "advanced/hotwords",
+              "advanced/model-detection"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Configuration",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "configuration/disable-ffmpeg",
+              "configuration/disable-libarchive",
+              "configuration/play-asset-delivery"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Core API",
             "pages": [
-              "api-reference/introduction"
+              "api/core",
+              "api/model-path"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Speech-to-Text",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/stt/create-stt",
+              "api/stt/streaming-stt",
+              "api/stt/types"
+            ]
+          },
+          {
+            "group": "Text-to-Speech",
+            "pages": [
+              "api/tts/create-tts",
+              "api/tts/streaming-tts",
+              "api/tts/types"
+            ]
+          },
+          {
+            "group": "Audio & Models",
+            "pages": [
+              "api/audio",
+              "api/download",
+              "api/vad",
+              "api/diarization"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Models",
+        "groups": [
+          {
+            "group": "Speech-to-Text Models",
+            "pages": [
+              "models/stt/overview",
+              "models/stt/transducer",
+              "models/stt/paraformer",
+              "models/stt/whisper",
+              "models/stt/nemo-ctc",
+              "models/stt/other-models"
+            ]
+          },
+          {
+            "group": "Text-to-Speech Models",
+            "pages": [
+              "models/tts/overview",
+              "models/tts/vits",
+              "models/tts/matcha",
+              "models/tts/kokoro",
+              "models/tts/other-models"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Resources",
+        "groups": [
+          {
+            "group": "Additional Resources",
+            "pages": [
+              "resources/migration",
+              "resources/examples",
+              "resources/troubleshooting",
+              "resources/contributing"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

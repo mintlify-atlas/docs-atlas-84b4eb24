@@ -1,0 +1,583 @@
+---
+title: Examples
+description: Example apps, sample code, and integration patterns
+icon: code
+---
+
+Explore practical examples and integration patterns for react-native-sherpa-onnx.
+
+## Example Applications
+
+### Official Example App
+
+The main example app in the repository demonstrates all core features:
+
+<Card title="Audio to Text Example" icon="github" href="https://github.com/XDcobra/react-native-sherpa-onnx/tree/main/example">
+  Full-featured demo app with STT, TTS, and streaming capabilities
+</Card>
+
+**Features:**
+- Multiple model type support (Zipformer, Paraformer, NeMo CTC, Whisper, WeNet CTC, SenseVoice, FunASR Nano, Moonshine, and more)
+- Model selection and configuration
+- Offline audio file transcription
+- Online (streaming) STT with live microphone transcription
+- Streaming TTS with incremental speech generation
+- Test audio files for different languages
+- Execution provider selection (CPU, QNN, NNAPI, XNNPACK, Core ML)
+
+**Getting Started:**
+
+```bash
+cd example
+yarn install
+yarn android  # or yarn ios
+```
+
+<Frame>
+  <img src="/images/example_home_screen.png" alt="Example app home screen" />
+</Frame>
+
+### Video to Text Comparison App
+
+A comprehensive comparison app that demonstrates video-to-text transcription:
+
+<Card title="Video to Text Comparison" icon="github" href="https://github.com/XDcobra/mobile-videototext-comparison">
+  Compare react-native-sherpa-onnx with other STT solutions
+</Card>
+
+**Features:**
+- Video to audio conversion (using native APIs)
+- Audio to text transcription
+- Video to text pipeline (video → WAV → text)
+- Side-by-side comparison with different STT providers
+- Performance benchmarking and metrics
+
+<Frame>
+  <img src="/images/vtt_model_overview.png" alt="Video to text comparison" />
+</Frame>
+
+## Code Examples
+
+### Basic Speech-to-Text
+
+<CodeGroup>
+```ts File Transcription
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+
+async function transcribeFile(audioPath: string) {
+  // Create STT instance
+  const stt = await createSTT({
+    modelPath: { type: 'asset', path: 'models/whisper-tiny' },
+    modelType: 'whisper'
+  });
+
+  try {
+    // Transcribe audio file
+    const result = await stt.transcribeFile(audioPath);
+    
+    console.log('Text:', result.text);
+    console.log('Language:', result.lang);
+    console.log('Tokens:', result.tokens);
+    
+    return result.text;
+  } finally {
+    // Always cleanup
+    await stt.destroy();
+  }
+}
+```
+
+```ts Raw Audio Samples
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+
+async function transcribeSamples(samples: Float32Array) {
+  const stt = await createSTT({
+    modelPath: { type: 'asset', path: 'models/paraformer' },
+    modelType: 'paraformer'
+  });
+
+  try {
+    const result = await stt.transcribe(samples, 16000);
+    return result.text;
+  } finally {
+    await stt.destroy();
+  }
+}
+```
+</CodeGroup>
+
+### Streaming Speech-to-Text
+
+```ts Live Microphone Transcription
+import { createStreamingSTT } from 'react-native-sherpa-onnx/stt';
+import { createPcmLiveStream } from 'react-native-sherpa-onnx/pcm';
+
+async function startLiveTranscription() {
+  // Create streaming recognizer
+  const recognizer = await createStreamingSTT({
+    modelPath: { type: 'asset', path: 'models/zipformer' },
+    modelType: 'transducer',
+    maxActivePaths: 4
+  });
+
+  // Create live audio stream
+  const stream = createPcmLiveStream({
+    sampleRate: 16000,
+    bufferSizeInSeconds: 0.1
+  });
+
+  try {
+    // Start recording
+    await stream.start();
+
+    // Process audio chunks
+    stream.on('data', async (samples: Float32Array) => {
+      recognizer.acceptWaveform(samples);
+      
+      // Get partial results
+      const result = await recognizer.getResult();
+      if (result.text) {
+        console.log('Partial:', result.text);
+      }
+      
+      // Check for endpoint
+      if (await recognizer.isEndpoint()) {
+        await recognizer.reset();
+      }
+    });
+
+    // Stop after 10 seconds
+    setTimeout(async () => {
+      await stream.stop();
+      
+      // Get final result
+      const final = await recognizer.getResult();
+      console.log('Final:', final.text);
+    }, 10000);
+  } finally {
+    await recognizer.destroy();
+  }
+}
+```
+
+### Text-to-Speech
+
+<CodeGroup>
+```ts Basic TTS
+import { createTTS } from 'react-native-sherpa-onnx/tts';
+
+async function generateSpeech(text: string) {
+  const tts = await createTTS({
+    modelPath: { type: 'asset', path: 'models/vits-piper' },
+    modelType: 'vits',
+    modelOptions: {
+      vits: {
+        noiseScale: 0.667,
+        lengthScale: 1.0
+      }
+    }
+  });
+
+  try {
+    const audio = await tts.generateSpeech(text);
+    
+    console.log('Sample rate:', audio.sampleRate);
+    console.log('Samples:', audio.samples.length);
+    
+    // Play audio with your audio library
+    // await playAudio(audio.samples, audio.sampleRate);
+    
+    return audio;
+  } finally {
+    await tts.destroy();
+  }
+}
+```
+
+```ts Multi-Speaker TTS
+import { createTTS } from 'react-native-sherpa-onnx/tts';
+
+async function speakWithVoice(text: string, speakerId: number) {
+  const tts = await createTTS({
+    modelPath: { type: 'asset', path: 'models/kokoro' },
+    modelType: 'kokoro',
+    numSpeakers: 10  // Model supports 10 speakers
+  });
+
+  try {
+    const audio = await tts.generateSpeech(text, speakerId);
+    return audio;
+  } finally {
+    await tts.destroy();
+  }
+}
+```
+</CodeGroup>
+
+### Streaming Text-to-Speech
+
+```ts Incremental Speech Generation
+import { createStreamingTTS } from 'react-native-sherpa-onnx/tts';
+
+async function streamSpeech(text: string) {
+  const tts = await createStreamingTTS({
+    modelPath: { type: 'asset', path: 'models/vits-piper' },
+    modelType: 'vits'
+  });
+
+  try {
+    const chunks: Float32Array[] = [];
+    let sampleRate = 0;
+
+    for await (const chunk of tts.generateSpeechStream(text)) {
+      sampleRate = chunk.sampleRate;
+      chunks.push(chunk.samples);
+      
+      // Play chunk immediately for low latency
+      // await playChunk(chunk.samples, chunk.sampleRate);
+      
+      console.log('Received chunk:', chunk.samples.length, 'samples');
+    }
+
+    // All chunks received
+    console.log('Total chunks:', chunks.length);
+    return { chunks, sampleRate };
+  } finally {
+    await tts.destroy();
+  }
+}
+```
+
+## Integration Patterns
+
+### Model Management
+
+```ts Model Discovery and Selection
+import {
+  listAssetModels,
+  listModelsAtPath,
+  resolveModelPath
+} from 'react-native-sherpa-onnx';
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+
+async function discoverModels() {
+  // List bundled models
+  const assetModels = await listAssetModels();
+  const sttModels = assetModels.filter(m => m.hint === 'stt');
+  
+  console.log('Available STT models:', sttModels);
+  
+  // User selects a model
+  const selected = sttModels[0];
+  const modelPath = { 
+    type: 'asset' as const, 
+    path: `models/${selected.folder}` 
+  };
+  
+  // Resolve to absolute path
+  const absolutePath = await resolveModelPath(modelPath);
+  console.log('Model path:', absolutePath);
+  
+  // Initialize with auto-detection
+  const stt = await createSTT({
+    modelPath,
+    modelType: 'auto'  // Auto-detect from files
+  });
+  
+  return stt;
+}
+```
+
+### Execution Provider Selection
+
+```ts Hardware Acceleration
+import { 
+  getAvailableProviders,
+  getQnnSupport,
+  getNnapiSupport,
+  getXnnpackSupport 
+} from 'react-native-sherpa-onnx';
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+
+async function initializeWithBestProvider() {
+  // Check available providers
+  const providers = await getAvailableProviders();
+  console.log('Available providers:', providers);
+  
+  // Check specific acceleration support
+  const qnnSupport = await getQnnSupport();
+  const nnapiSupport = await getNnapiSupport();
+  const xnnpackSupport = await getXnnpackSupport();
+  
+  // Select best available provider
+  let provider = 'cpu';
+  
+  if (qnnSupport.canInit) {
+    provider = 'qnn';  // Qualcomm NPU (best)
+  } else if (nnapiSupport.canInit) {
+    provider = 'nnapi';  // Android accelerator
+  } else if (xnnpackSupport.canInit) {
+    provider = 'xnnpack';  // CPU optimized
+  }
+  
+  console.log('Using provider:', provider);
+  
+  // Create STT with selected provider
+  const stt = await createSTT({
+    modelPath: { type: 'asset', path: 'models/whisper' },
+    modelType: 'whisper',
+    provider  // Use hardware acceleration
+  });
+  
+  return stt;
+}
+```
+
+### React Native Integration
+
+```ts React Hook
+import { useState, useEffect, useRef } from 'react';
+import { createSTT, SttEngine } from 'react-native-sherpa-onnx/stt';
+
+function useSpeechRecognition(modelPath: string) {
+  const [isReady, setIsReady] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  const sttRef = useRef<SttEngine | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function initialize() {
+      try {
+        const stt = await createSTT({
+          modelPath: { type: 'asset', path: modelPath },
+          modelType: 'auto'
+        });
+
+        if (mounted) {
+          sttRef.current = stt;
+          setIsReady(true);
+        } else {
+          await stt.destroy();
+        }
+      } catch (err) {
+        if (mounted) {
+          setError(err as Error);
+        }
+      }
+    }
+
+    initialize();
+
+    return () => {
+      mounted = false;
+      if (sttRef.current) {
+        sttRef.current.destroy().catch(console.error);
+      ]
+    };
+  }, [modelPath]);
+
+  const transcribe = async (audioPath: string) => {
+    if (!sttRef.current) {
+      throw new Error('STT not initialized');
+    }
+    return sttRef.current.transcribeFile(audioPath);
+  };
+
+  return { stt: sttRef.current, isReady, error, transcribe };
+}
+
+// Usage in component
+function TranscriptionScreen() {
+  const { isReady, transcribe, error } = useSpeechRecognition(
+    'models/whisper-tiny'
+  );
+
+  const handleTranscribe = async () => {
+    if (!isReady) return;
+    
+    const result = await transcribe('/path/to/audio.wav');
+    console.log('Result:', result.text);
+  };
+
+  if (error) return <Text>Error: {error.message}</Text>;
+  if (!isReady) return <Text>Loading model...</Text>;
+
+  return <Button title="Transcribe" onPress={handleTranscribe} />;
+}
+```
+
+### Error Handling
+
+```ts Robust Error Handling
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+
+async function robustTranscription(audioPath: string) {
+  let stt = null;
+  
+  try {
+    // Initialize
+    stt = await createSTT({
+      modelPath: { type: 'asset', path: 'models/whisper' },
+      modelType: 'whisper'
+    });
+    
+    // Transcribe
+    const result = await stt.transcribeFile(audioPath);
+    
+    if (!result.text) {
+      throw new Error('Empty transcription result');
+    }
+    
+    return {
+      success: true,
+      text: result.text,
+      language: result.lang
+    };
+    
+  } catch (error) {
+    console.error('Transcription error:', error);
+    
+    // Handle specific errors
+    if (error.message.includes('Model directory does not exist')) {
+      return {
+        success: false,
+        error: 'Model not found. Please install the model first.'
+      };
+    }
+    
+    if (error.message.includes('Invalid audio format')) {
+      return {
+        success: false,
+        error: 'Audio file must be WAV, 16kHz, mono, 16-bit PCM'
+      };
+    }
+    
+    return {
+      success: false,
+      error: 'Transcription failed. Please try again.'
+    };
+    
+  } finally {
+    // Always cleanup
+    if (stt) {
+      await stt.destroy().catch(console.error);
+    }
+  }
+}
+```
+
+## Common Use Cases
+
+### Voice Notes App
+
+```ts Voice Recording and Transcription
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+import { AudioRecorder } from 'react-native-audio-recorder';
+
+class VoiceNoteManager {
+  private stt: SttEngine | null = null;
+
+  async initialize() {
+    this.stt = await createSTT({
+      modelPath: { type: 'asset', path: 'models/whisper-small' },
+      modelType: 'whisper'
+    });
+  }
+
+  async recordAndTranscribe() {
+    // Record audio
+    const audioPath = await AudioRecorder.record({
+      sampleRate: 16000,
+      channels: 1,
+      bitsPerSample: 16
+    });
+
+    // Transcribe
+    const result = await this.stt!.transcribeFile(audioPath);
+
+    return {
+      audioPath,
+      text: result.text,
+      timestamp: new Date()
+    };
+  }
+
+  async cleanup() {
+    if (this.stt) {
+      await this.stt.destroy();
+      this.stt = null;
+    }
+  }
+}
+```
+
+### Voice Assistant
+
+```ts Simple Voice Assistant
+import { createStreamingSTT } from 'react-native-sherpa-onnx/stt';
+import { createTTS } from 'react-native-sherpa-onnx/tts';
+
+class VoiceAssistant {
+  private stt: StreamingSTTEngine;
+  private tts: TtsEngine;
+
+  async initialize() {
+    this.stt = await createStreamingSTT({
+      modelPath: { type: 'asset', path: 'models/zipformer' },
+      modelType: 'transducer'
+    });
+
+    this.tts = await createTTS({
+      modelPath: { type: 'asset', path: 'models/vits' },
+      modelType: 'vits'
+    });
+  }
+
+  async listen(): Promise<string> {
+    // Start listening
+    const stream = createPcmLiveStream({ sampleRate: 16000 });
+    await stream.start();
+
+    return new Promise((resolve) => {
+      stream.on('data', async (samples) => {
+        this.stt.acceptWaveform(samples);
+        
+        if (await this.stt.isEndpoint()) {
+          const result = await this.stt.getResult();
+          await stream.stop();
+          resolve(result.text);
+        }
+      });
+    });
+  }
+
+  async respond(text: string) {
+    const audio = await this.tts.generateSpeech(text);
+    // Play audio
+    return audio;
+  }
+
+  async cleanup() {
+    await this.stt?.destroy();
+    await this.tts?.destroy();
+  }
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="book" href="/api/core">
+    Detailed API documentation
+  </Card>
+  <Card title="Model Setup" icon="database" href="/features/model-setup">
+    Learn about model management
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/resources/troubleshooting">
+    Common issues and solutions
+  </Card>
+  <Card title="Contributing" icon="code-pull-request" href="/resources/contributing">
+    Contribute to the project
+  </Card>
+</CardGroup>

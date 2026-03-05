@@ -1,0 +1,405 @@
+---
+title: "Play Asset Delivery"
+description: "Reduce base APK size by delivering large models through Android Play Asset Delivery"
+---
+
+## Overview
+
+Play Asset Delivery (PAD) allows you to separate large model files from your base APK into **asset packs** that are installed alongside your app. This keeps your base APK small while ensuring models are available at runtime.
+
+### Benefits of using PAD
+
+- **Smaller base APK**: Keep your main APK under size limits for faster downloads
+- **On-demand or install-time delivery**: Models can be delivered when the app is installed or requested on-demand
+- **Organized model management**: Separate model files from app code
+- **Better user experience**: Users don't wait for large model downloads on first launch
+
+<Note>
+  PAD is an Android-only feature. On iOS, you can use folder references in Xcode to bundle models, or implement on-demand downloads using the Download Manager API.
+</Note>
+
+## How it works
+
+1. **Create an asset pack module** (e.g., `sherpa_models`) in your Android project
+2. **Place model files** in the asset pack's assets directory
+3. **Configure your app** to reference the asset pack
+4. **At runtime**, use `getAssetPackPath()` to get the path to extracted models
+5. **List and load models** from the PAD directory
+
+## Setup
+
+<Steps>
+  <Step title="Create the asset pack module">
+    Create a new Gradle module for your asset pack in your Android project:
+
+    ```bash
+    mkdir -p android/sherpa_models/src/main
+    ```
+
+    Create `android/sherpa_models/build.gradle`:
+
+    ```gradle
+    plugins {
+        id 'com.android.asset-pack'
+    }
+
+    assetPack {
+        packName = "sherpa_models"
+        dynamicDelivery {
+            deliveryType = "install-time"
+        }
+    }
+    ```
+
+    <Note>
+      Use `deliveryType = "install-time"` to ensure models are available immediately. For optional models, use `"on-demand"`.
+    </Note>
+  </Step>
+
+  <Step title="Add models to the asset pack">
+    Place your model folders in the asset pack's assets directory:
+
+    ```
+    android/sherpa_models/src/main/assets/
+      models/
+        sherpa-onnx-whisper-tiny-en/
+          encoder.onnx
+          decoder.onnx
+          tokens.txt
+        vits-piper-en_US-lessac-low/
+          model.onnx
+          tokens.txt
+    ```
+
+    Each subfolder under `models/` represents one complete model.
+  </Step>
+
+  <Step title="Reference the asset pack in your app">
+    In your app's `build.gradle`, add the asset pack reference:
+
+    ```gradle
+    android {
+        // ...
+        assetPacks = [":sherpa_models"]
+    }
+    ```
+
+    Also add the asset pack module to `settings.gradle`:
+
+    ```gradle
+    include ':sherpa_models'
+    project(':sherpa_models').projectDir = new File(rootProject.projectDir, 'sherpa_models')
+    ```
+  </Step>
+
+  <Step title="Build with asset packs">
+    Build an Android App Bundle (AAB) that includes the asset pack:
+
+    ```bash
+    ./gradlew bundleRelease
+    ```
+
+    For local testing with bundletool:
+
+    ```bash
+    # Install with asset pack
+    ./gradlew installDebugWithPad
+    ```
+
+    <Warning>
+      Standard `installDebug` or `assembleDebug` tasks will NOT include asset packs. You must build an AAB or use a custom task that extracts and installs asset packs locally.
+    </Warning>
+  </Step>
+</Steps>
+
+## Runtime usage
+
+Once your app is installed with the asset pack, use these APIs to access models:
+
+### Get the asset pack path
+
+```typescript
+import { getAssetPackPath } from 'react-native-sherpa-onnx';
+
+const padPath = await getAssetPackPath('sherpa_models');
+
+if (padPath) {
+  console.log('PAD models available at:', padPath);
+  // Typically: /data/app/.../base.apk!/assets/sherpa_models/assets/models
+} else {
+  console.warn('Asset pack not available - use fallback');
+  // Use DocumentDirectoryPath or download models
+}
+```
+
+<Note>
+  `getAssetPackPath()` returns `null` if the app was not installed with the asset pack, or on iOS (where PAD is not supported).
+</Note>
+
+### List models in the asset pack
+
+```typescript
+import { listModelsAtPath } from 'react-native-sherpa-onnx';
+import { DocumentDirectoryPath } from '@dr.pogodin/react-native-fs';
+
+const PAD_PACK = 'sherpa_models';
+const padPath = await getAssetPackPath(PAD_PACK);
+const basePath = padPath ?? `${DocumentDirectoryPath}/models`;
+
+// List all model folders in the PAD directory
+const models = await listModelsAtPath(basePath);
+
+// Filter by type hint
+const sttModels = models.filter(m => m.hint === 'stt');
+const ttsModels = models.filter(m => m.hint === 'tts');
+
+console.log('Available STT models:', sttModels.map(m => m.folder));
+console.log('Available TTS models:', ttsModels.map(m => m.folder));
+```
+
+### Initialize with PAD models
+
+```typescript
+import { initializeTTS } from 'react-native-sherpa-onnx/tts';
+
+// User selects a model folder, e.g., 'vits-piper-en_US-lessac-low'
+const selectedFolder = 'vits-piper-en_US-lessac-low';
+const fullPath = `${basePath.replace(/\/+$/, '')}/${selectedFolder}`;
+
+// Initialize with file path (not asset path)
+await initializeTTS({
+  modelPath: { type: 'file', path: fullPath },
+  modelType: 'auto',
+});
+```
+
+<Warning>
+  PAD models must be accessed using `modelPath: { type: 'file', path: fullPath }`, NOT as asset paths. The `getAssetPackPath()` returns a filesystem path to the extracted content.
+</Warning>
+
+## Complete example
+
+Here's a full example of PAD setup in a React Native component:
+
+```typescript
+import React, { useEffect, useState } from 'react';
+import { View, Text, FlatList, TouchableOpacity } from 'react-native';
+import { DocumentDirectoryPath } from '@dr.pogodin/react-native-fs';
+import {
+  getAssetPackPath,
+  listModelsAtPath,
+} from 'react-native-sherpa-onnx';
+import { initializeTTS } from 'react-native-sherpa-onnx/tts';
+
+const PAD_PACK = 'sherpa_models';
+
+export default function ModelSelector() {
+  const [basePath, setBasePath] = useState<string | null>(null);
+  const [models, setModels] = useState<Array<{ folder: string; hint: string }>>([]);
+
+  useEffect(() => {
+    async function setupPAD() {
+      // Get PAD path or fallback to documents directory
+      const padPath = await getAssetPackPath(PAD_PACK);
+      const path = padPath ?? `${DocumentDirectoryPath}/models`;
+      setBasePath(path);
+
+      // List available models
+      const availableModels = await listModelsAtPath(path);
+      setModels(availableModels.filter(m => m.hint === 'tts'));
+    }
+
+    setupPAD();
+  }, []);
+
+  const handleSelectModel = async (folder: string) => {
+    if (!basePath) return;
+
+    const fullPath = `${basePath.replace(/\/+$/, '')}/${folder}`;
+
+    try {
+      await initializeTTS({
+        modelPath: { type: 'file', path: fullPath },
+        modelType: 'auto',
+      });
+      console.log('TTS initialized with:', folder);
+    } catch (error) {
+      console.error('Failed to initialize:', error);
+    }
+  };
+
+  return (
+    <View>
+      <Text>Base path: {basePath ?? 'Loading...'}</Text>
+      <FlatList
+        data={models}
+        keyExtractor={item => item.folder}
+        renderItem={({ item }) => (
+          <TouchableOpacity onPress={() => handleSelectModel(item.folder)}>
+            <Text>{item.folder}</Text>
+          </TouchableOpacity>
+        )}
+      />
+    </View>
+  );
+}
+```
+
+## API reference for PAD
+
+| API | Description |
+|-----|-------------|
+| `getAssetPackPath(packName)` | Returns the filesystem path to the asset pack's content, or `null` if not available. Android only. |
+| `listModelsAtPath(path, recursive?)` | Lists model folders under the given path. Use this for PAD paths, not `listAssetModels()`. |
+| `fileModelPath(filePath)` | Returns `{ type: 'file', path: filePath }` for use with initialization. |
+
+<Note>
+  Use `listAssetModels()` for bundled assets in the main APK, and `listModelsAtPath()` for PAD or downloaded models.
+</Note>
+
+## Comparison: Bundled vs PAD
+
+### Bundled assets (main APK)
+
+- Models are in `android/app/src/main/assets/models/`
+- Accessed with `{ type: 'asset', path: 'models/folder-name' }`
+- Listed with `listAssetModels()`
+- Increases base APK size
+- Always available at runtime
+
+### Play Asset Delivery
+
+- Models are in a separate asset pack module
+- Accessed with `{ type: 'file', path: fullPath }` where `fullPath` comes from `getAssetPackPath()`
+- Listed with `listModelsAtPath(padPath)`
+- Base APK stays small
+- Requires AAB build and Play Store (or bundletool for local testing)
+- May not be available if the app wasn't installed with the pack
+
+## Debugging with PAD
+
+### Local testing
+
+To test PAD locally without uploading to Play Store:
+
+1. **Install bundletool**: Download from [GitHub releases](https://github.com/google/bundletool/releases)
+2. **Build and install with PAD**:
+
+```bash
+# Build the AAB
+./gradlew bundleDebug
+
+# Extract and install with bundletool
+bundletool build-apks \
+  --bundle=app/build/outputs/bundle/debug/app-debug.aab \
+  --output=app-debug.apks \
+  --local-testing
+
+bundletool install-apks --apks=app-debug.apks
+```
+
+3. **Start Metro** and connect:
+
+```bash
+npx react-native start
+adb reverse tcp:8081 tcp:8081
+```
+
+<Warning>
+  Standard `yarn android` or `react-native run-android` will NOT include asset packs. You must build an AAB and use bundletool for local PAD testing.
+</Warning>
+
+### Release testing
+
+1. Build a release AAB: `./gradlew bundleRelease`
+2. Upload to Play Console (internal testing track)
+3. Install on device and verify `getAssetPackPath()` returns a valid path
+
+## Troubleshooting
+
+### `getAssetPackPath()` returns `null`
+
+**Cause:** The app was not installed from a bundle that includes the asset pack.
+
+**Solutions:**
+- Ensure you built an AAB (not just APK)
+- For local testing, use bundletool to extract and install the asset pack
+- Verify `assetPacks` is correctly set in `build.gradle`
+- Check that the asset pack module is included in `settings.gradle`
+
+### Models list is empty
+
+**Cause:** The path passed to `listModelsAtPath()` doesn't contain model folders.
+
+**Solutions:**
+- Verify the PAD path with `console.log(padPath)`
+- Check that models are in `android/sherpa_models/src/main/assets/models/`
+- Ensure each model folder contains required files (e.g., `model.onnx`, `tokens.txt`)
+- Rebuild the AAB after adding models
+
+### "Model directory does not exist"
+
+**Cause:** The model path is incorrect or the asset pack wasn't extracted.
+
+**Solutions:**
+- Ensure you're using `{ type: 'file', path: fullPath }`, not `{ type: 'asset', ... }`
+- Verify the full path includes the model folder name: `${padPath}/models/folder-name`
+- Check that `getAssetPackPath()` returned a non-null value
+
+### Bundletool not found
+
+**Cause:** `bundletool` is not in your PATH.
+
+**Solutions:**
+- Download bundletool JAR from GitHub
+- Add to PATH, or create an alias: `alias bundletool='java -jar /path/to/bundletool.jar'`
+- Or pass the path in Gradle: `./gradlew installDebugWithPad -Pbundletool=/path/to/bundletool.jar`
+
+## Best practices
+
+<Steps>
+  <Step title="Use install-time delivery for critical models">
+    Set `deliveryType = "install-time"` for models that are essential at first launch. Use `"on-demand"` for optional or large models that can be downloaded later.
+  </Step>
+
+  <Step title="Provide a fallback path">
+    Always check if `getAssetPackPath()` returns `null` and provide a fallback:
+
+    ```typescript
+    const padPath = await getAssetPackPath(PAD_PACK);
+    const basePath = padPath ?? `${DocumentDirectoryPath}/models`;
+    ```
+
+    This ensures your app works even if the asset pack isn't available.
+  </Step>
+
+  <Step title="Organize models by type">
+    Keep all models in a consistent structure:
+
+    ```
+    assets/models/
+      stt/
+        whisper-tiny/
+        conformer-base/
+      tts/
+        piper-en-us/
+        vits-en/
+    ```
+
+    Use `recursive: true` with `listModelsAtPath()` to scan subdirectories.
+  </Step>
+
+  <Step title="Test both PAD and non-PAD scenarios">
+    Test your app in both scenarios:
+    - Installed with PAD (using bundletool or Play Store)
+    - Installed without PAD (standard APK or when pack is unavailable)
+
+    Ensure your fallback path logic works correctly.
+  </Step>
+</Steps>
+
+## See also
+
+- [Model Setup Guide](/features/model-setup) - Complete guide to model management
+- [Download Manager](/api/download) - Download models at runtime
+- [Bundled Assets](/features/model-setup) - Alternative to PAD for smaller models

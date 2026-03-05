@@ -1,0 +1,105 @@
+---
+title: VAD (Voice Activity Detection)
+description: Voice activity detection API (coming soon)
+---
+
+<Note>
+  Voice Activity Detection (VAD) API is planned for a future release.
+</Note>
+
+## Overview
+
+Voice Activity Detection (VAD) is a technique for detecting the presence or absence of human speech in an audio signal. It's commonly used to:
+
+- Reduce computational load by processing only speech segments
+- Improve speech recognition accuracy by filtering out silence and noise
+- Enable push-to-talk and voice-triggered applications
+- Optimize audio streaming and bandwidth
+
+## Planned Features
+
+The VAD API will provide:
+
+- **Real-time voice detection**: Detect speech in live audio streams
+- **Batch processing**: Analyze audio files for speech segments
+- **Configurable sensitivity**: Adjust detection thresholds
+- **Multiple VAD models**: Support for different VAD architectures
+- **Integration with STT**: Seamless integration with speech recognition
+
+## Expected Usage (Preview)
+
+```typescript
+import { createVAD, assetModelPath } from 'react-native-sherpa-onnx/vad';
+import { createPcmLiveStream } from 'react-native-sherpa-onnx/audio';
+
+// Create VAD instance
+const vad = await createVAD({
+  modelPath: assetModelPath('models/silero-vad'),
+});
+
+// Process live audio
+const mic = createPcmLiveStream({ sampleRate: 16000 });
+
+mic.onData(async (samples, sampleRate) => {
+  const isSpeech = await vad.detectSpeech(samples, sampleRate);
+  
+  if (isSpeech) {
+    console.log('Speech detected');
+    // Process audio with STT
+  }
+});
+
+await mic.start();
+
+// Later: cleanup
+await mic.stop();
+await vad.destroy();
+```
+
+## Model Support
+
+Planned support for popular VAD models:
+
+- **Silero VAD**: Lightweight and accurate VAD model
+- **WebRTC VAD**: Fast, low-latency detection
+- **Custom models**: Bring your own ONNX VAD models
+
+## Integration Example
+
+Combining VAD with streaming STT:
+
+```typescript
+import { createVAD } from 'react-native-sherpa-onnx/vad';
+import { createStreamingSTT } from 'react-native-sherpa-onnx/stt';
+import { createPcmLiveStream } from 'react-native-sherpa-onnx/audio';
+
+const vad = await createVAD({ /* ... */ });
+const stt = await createStreamingSTT({ /* ... */ });
+const stream = await stt.createStream();
+
+const mic = createPcmLiveStream({ sampleRate: 16000 });
+
+mic.onData(async (samples, sampleRate) => {
+  const isSpeech = await vad.detectSpeech(samples, sampleRate);
+  
+  if (isSpeech) {
+    // Only process speech segments
+    const { result, isEndpoint } = await stream.processAudioChunk(
+      samples,
+      sampleRate
+    );
+    
+    console.log('Transcription:', result.text);
+  }
+});
+```
+
+## Availability
+
+This API is not yet implemented. Track progress on the [react-native-sherpa-onnx GitHub repository](https://github.com/k2-fsa/react-native-sherpa-onnx).
+
+## See Also
+
+- [Streaming STT](/api/stt/streaming-stt) - Real-time speech recognition
+- [Audio Utilities](/api/audio) - Audio capture and processing
+- [Diarization API](/api/diarization) - Speaker identification (planned)

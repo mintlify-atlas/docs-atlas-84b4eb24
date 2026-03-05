@@ -1,0 +1,325 @@
+---
+title: Whisper Models
+description: Multilingual encoder-decoder models with robust zero-shot recognition
+---
+
+# Whisper Models
+
+Whisper is OpenAI's **multilingual** speech recognition model with excellent zero-shot performance across 90+ languages. It's robust to diverse audio conditions and accents.
+
+## Model Architecture
+
+Whisper uses an encoder-decoder architecture (without a joiner):
+- **Encoder** (`encoder.onnx` or `encoder.int8.onnx`) – Processes audio
+- **Decoder** (`decoder.onnx` or `decoder.int8.onnx`) – Generates text tokens
+- **Tokens** (`tokens.txt`) – Multilingual token vocabulary
+
+The absence of a joiner component distinguishes Whisper from transducer models.
+
+## When to Use
+
+<CardGroup cols={2}>
+  <Card title="Multilingual Content" icon="language">
+    Transcribe audio in 90+ languages without language-specific models
+  </Card>
+  <Card title="Diverse Audio" icon="waveform">
+    Robust to accents, background noise, and varying audio quality
+  </Card>
+  <Card title="Translation" icon="globe">
+    Built-in translation to English (set task: 'translate')
+  </Card>
+  <Card title="Zero-Shot Recognition" icon="sparkles">
+    Good accuracy without language-specific fine-tuning
+  </Card>
+</CardGroup>
+
+## Supported Languages
+
+Whisper supports **90+ languages** including:
+
+- English, Spanish, French, German, Italian, Portuguese
+- Chinese (Mandarin, Cantonese), Japanese, Korean
+- Arabic, Russian, Hindi, Bengali
+- And many more...
+
+Use the SDK's language helpers to get the full list:
+
+```typescript
+import { getWhisperLanguages } from 'react-native-sherpa-onnx/stt';
+
+const languages = getWhisperLanguages();
+console.log(languages[0]); // { id: 'en', name: 'english' }
+```
+
+## Performance Characteristics
+
+| Aspect | Rating | Notes |
+|--------|--------|-------|
+| **Streaming** | ❌ Not Supported | Offline/batch only (encoder-decoder architecture) |
+| **Accuracy** | ⭐⭐⭐⭐⭐ | Excellent multilingual accuracy |
+| **Speed** | ⭐⭐⭐ | Slower than CTC/transducer, but acceptable |
+| **Memory** | ⭐⭐⭐ | Larger models need significant RAM |
+| **Model Size** | Large | Tiny: ~40 MB, Base: ~75 MB, Small: ~250 MB, Large: 1+ GB |
+
+## Download Links
+
+<Card title="Whisper Models" icon="download" href="https://k2-fsa.github.io/sherpa/onnx/pretrained_models/whisper/index.html">
+  Browse and download pretrained Whisper models (Tiny, Base, Small, Medium, Large)
+</Card>
+
+## Configuration Example
+
+### Basic Transcription
+
+```typescript
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+
+const stt = await createSTT({
+  modelPath: {
+    type: 'asset',
+    path: 'models/sherpa-onnx-whisper-tiny-en'
+  },
+  modelType: 'whisper', // or 'auto'
+  preferInt8: true,
+  numThreads: 2,
+});
+
+const result = await stt.transcribeFile('/path/to/audio.wav');
+console.log('Transcription:', result.text);
+
+await stt.destroy();
+```
+
+### With Language Selection
+
+```typescript
+import { createSTT, getWhisperLanguages } from 'react-native-sherpa-onnx/stt';
+
+const stt = await createSTT({
+  modelPath: {
+    type: 'asset',
+    path: 'models/sherpa-onnx-whisper-base'
+  },
+  modelType: 'whisper',
+  modelOptions: {
+    whisper: {
+      language: 'de',           // German
+      task: 'transcribe',       // or 'translate' for English translation
+    }
+  },
+});
+
+const result = await stt.transcribeFile('/path/to/german-audio.wav');
+console.log('Result:', result.text); // German text
+```
+
+### Translation to English
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/whisper-base' },
+  modelType: 'whisper',
+  modelOptions: {
+    whisper: {
+      language: 'fr',        // French source
+      task: 'translate',     // Translate to English
+    }
+  },
+});
+
+const result = await stt.transcribeFile('/path/to/french-audio.wav');
+console.log('English translation:', result.text);
+```
+
+## Model Options
+
+Whisper supports several configuration options via `modelOptions.whisper`:
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `language` | `string` | Language code (e.g. `'en'`, `'de'`, `'zh'`). Use `getWhisperLanguages()` for valid codes. Omit for auto-detection. |
+| `task` | `'transcribe' \| 'translate'` | `'transcribe'` returns text in source language. `'translate'` translates to English. |
+| `tailPaddings` | `number` | Padding at the end of audio (default from model) |
+| `enableTokenTimestamps` | `boolean` | Enable token-level timestamps (Android only) |
+| `enableSegmentTimestamps` | `boolean` | Enable segment timestamps (Android only) |
+
+<Warning>
+  **Important**: Only use **valid language codes** from `getWhisperLanguages()`. Invalid values can crash the app.
+  
+  iOS currently supports only `language`, `task`, and `tailPaddings`. Timestamp options are Android-only.
+</Warning>
+
+## Language Helpers
+
+```typescript
+import { 
+  getWhisperLanguages,
+  WHISPER_LANGUAGES 
+} from 'react-native-sherpa-onnx/stt';
+
+// Get language list at runtime
+const languages = getWhisperLanguages();
+// [{ id: 'en', name: 'english' }, { id: 'zh', name: 'chinese' }, ...]
+
+// Build a picker/dropdown
+<Picker>
+  {languages.map(lang => (
+    <Picker.Item 
+      key={lang.id} 
+      label={lang.name} 
+      value={lang.id} 
+    />
+  ))}
+</Picker>
+```
+
+## Model Variants
+
+| Variant | Size | Speed | Accuracy | Use Case |
+|---------|------|-------|----------|----------|
+| **Tiny** | ~40 MB | Very Fast | Good | Mobile devices, quick transcription |
+| **Base** | ~75 MB | Fast | Good | Balanced mobile performance |
+| **Small** | ~250 MB | Medium | Very Good | High-quality mobile transcription |
+| **Medium** | ~800 MB | Slow | Excellent | High-end devices, best quality |
+| **Large** | 1+ GB | Very Slow | Best | Server-side, maximum accuracy |
+
+For mobile apps, **Tiny** and **Base** models are recommended. Use **Small** on high-end devices.
+
+## Model Detection
+
+Whisper models are detected by:
+- Presence of `encoder.onnx` + `decoder.onnx` (no `joiner.onnx`)
+- Optional folder name pattern (containing `whisper`)
+
+Expected files:
+- `encoder.onnx` (or `encoder.int8.onnx`)
+- `decoder.onnx` (or `decoder.int8.onnx`)
+- `tokens.txt`
+
+## Performance Tips
+
+### Use Quantized Models
+
+Int8 quantization significantly reduces size and improves speed:
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/whisper-tiny' },
+  preferInt8: true, // Use encoder.int8.onnx and decoder.int8.onnx
+});
+```
+
+### Choose the Right Variant
+
+Balance size, speed, and accuracy:
+
+```typescript
+// For mobile apps
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/whisper-tiny' }, // Fast, small
+  preferInt8: true,
+});
+
+// For high accuracy (high-end devices)
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/whisper-small' }, // Better quality
+  numThreads: 4,
+});
+```
+
+### Optimize Thread Count
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/whisper-base' },
+  numThreads: 4, // More threads for faster inference
+});
+```
+
+## Streaming Support
+
+<Warning>
+  **Streaming**: ❌ Not Supported
+  
+  Whisper models use an encoder-decoder architecture that processes the **entire audio sequence** at once. They cannot be used with `createStreamingSTT()`.
+  
+  For real-time recognition, use **Transducer**, **NeMo CTC**, or **Tone CTC** models instead.
+</Warning>
+
+## Advantages
+
+1. **Multilingual**: 90+ languages without separate models
+2. **Robust**: Handles accents, noise, and varying audio quality
+3. **Translation**: Built-in translation to English
+4. **Zero-Shot**: Good accuracy without fine-tuning
+5. **Widely Used**: Battle-tested, well-documented
+
+## Limitations
+
+1. **No Streaming**: Cannot be used for real-time recognition
+2. **Slower**: Encoder-decoder is slower than CTC models
+3. **Larger Models**: Bigger files and memory footprint
+4. **No Hotwords**: Does not support contextual biasing
+
+## Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Multilingual Apps" icon="language">
+    Apps serving users in multiple countries/languages
+  </Card>
+  <Card title="Content Transcription" icon="file-audio">
+    Transcribing podcasts, interviews, or videos
+  </Card>
+  <Card title="Subtitle Generation" icon="closed-captioning">
+    Creating subtitles for pre-recorded content
+  </Card>
+  <Card title="Translation" icon="globe">
+    Translating audio from any language to English
+  </Card>
+</CardGroup>
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="App crashes with invalid language">
+    - Use `getWhisperLanguages()` to get valid language codes
+    - Never use free-text input for `language` option
+    - Omit `language` for auto-detection
+  </Accordion>
+  
+  <Accordion title="Cannot use for streaming">
+    - Whisper does not support streaming
+    - Use Transducer, NeMo CTC, or Tone CTC for real-time recognition
+    - Use `getOnlineTypeOrNull(modelType)` to check if a model supports streaming
+  </Accordion>
+  
+  <Accordion title="Slow transcription">
+    - Use smaller variants (Tiny or Base)
+    - Enable `preferInt8: true` for quantized models
+    - Increase `numThreads` on multi-core devices
+    - Consider using Paraformer or CTC models for faster batch processing
+  </Accordion>
+  
+  <Accordion title="High memory usage">
+    - Use Tiny or Base variants instead of Small/Medium/Large
+    - Enable int8 quantization
+    - Ensure no other heavy apps are running
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="STT API" icon="code" href="/api/stt">
+    Detailed API documentation
+  </Card>
+  <Card title="Model Setup" icon="download" href="/model-setup">
+    How to download and bundle models
+  </Card>
+  <Card title="Transducer Models" icon="bolt" href="/models/stt/transducer">
+    For streaming recognition
+  </Card>
+  <Card title="Execution Providers" icon="microchip" href="/execution-providers">
+    Hardware acceleration options
+  </Card>
+</CardGroup>

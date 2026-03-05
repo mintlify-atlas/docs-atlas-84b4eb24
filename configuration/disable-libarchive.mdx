@@ -1,0 +1,178 @@
+---
+title: "Disable libarchive"
+description: "Reduce bundle size and avoid conflicts by disabling libarchive in your Android build"
+---
+
+## Overview
+
+If your app uses another native library that ships its own libarchive, or you don't need `.tar.bz2` archive extraction for model bundles, you can disable libarchive in react-native-sherpa-onnx. When disabled, no `libarchive.so` is linked or shipped, and archive-dependent APIs return an error at runtime.
+
+### When to disable libarchive
+
+- Your app uses another library that includes libarchive
+- You only use single-file ONNX models (not `.tar.bz2` archives)
+- You want to reduce APK size
+- You extract model archives through other means
+
+### What you'll lose
+
+When libarchive is disabled:
+
+- `extractTarBz2()` will reject with an error instead of extracting archives
+- `cancelExtractTarBz2()` becomes a no-op
+- The Download Manager can only download **single-file models** (`.onnx`), not archive models (`.tar.bz2`)
+
+<Note>
+  The `computeFileSha256()` function does NOT depend on libarchive and continues to work normally.
+</Note>
+
+## Configuration
+
+<Steps>
+  <Step title="Set the Gradle flag">
+    Add the following property to your `gradle.properties` file (at the project or root level):
+
+    ```properties
+    sherpaOnnxDisableLibarchive=true
+    ```
+
+    Alternatively, pass it as a command-line project property:
+
+    ```bash
+    ./gradlew assembleRelease -PsherpaOnnxDisableLibarchive=true
+    ```
+  </Step>
+
+  <Step title="Build your app">
+    When this flag is set, the Android native build will:
+
+    - **Not link** or ship libarchive (`libarchive.so`)
+    - **Not require** libarchive prebuilts or headers during the build process
+    - Complete successfully without libarchive dependencies
+  </Step>
+
+  <Step title="Adjust model handling">
+    If you previously used archive models (`.tar.bz2`):
+
+    - Switch to single-file `.onnx` models
+    - Or extract archives manually before loading them
+    - Or use bundled/PAD models that are already extracted
+
+    ```typescript
+    import { extractTarBz2 } from 'react-native-sherpa-onnx';
+
+    try {
+      await extractTarBz2(archivePath, targetPath);
+    } catch (error) {
+      console.error('libarchive not available:', error);
+      // Use alternative: single-file models or pre-extracted archives
+    }
+    ```
+  </Step>
+</Steps>
+
+## Impact on Download Manager
+
+The Model Download Manager (`react-native-sherpa-onnx/download`) is significantly affected when libarchive is disabled:
+
+| API | Effect when libarchive is disabled |
+|-----|-------------------------------------|
+| `downloadModelByCategory()` | **Archive models** (`.tar.bz2`): Download completes but extraction fails - the promise **rejects** and the model is unusable. **Single-file models** (`.onnx`): Work normally. |
+| `getLocalModelPathByCategory()` | Returns `null` for archive models that were never successfully extracted. Single-file models are unaffected. |
+| `listDownloadedModelsByCategory()` | Only lists models with complete manifests. Archive models with failed extraction won't appear. |
+| `isModelDownloadedByCategory()` | Returns `false` for archive models since extraction failed. |
+| `subscribeDownloadProgress()` | Download progress works, but the operation fails immediately after download when extraction is attempted. |
+| Other APIs | `refreshModelsByCategory`, `listModelsByCategory`, `getModelByIdByCategory`, `deleteModelByCategory`, `clearModelCacheByCategory` do not depend on extraction and work normally. |
+
+<Warning>
+  With libarchive disabled, **archive models** (`.tar.bz2`) cannot be downloaded or used via the Download Manager. Only **single-file models** (`.onnx`) are supported.
+</Warning>
+
+## Comparison
+
+### Before (Default)
+
+- libarchive is linked and shipped with your app
+- Can extract `.tar.bz2` model archives
+- Download Manager supports both archive and single-file models
+- APK size includes libarchive (~100-200 KB per architecture)
+- Risk of conflicts if another library also includes libarchive
+
+### After (libarchive Disabled)
+
+- No libarchive in your APK
+- Smaller app bundle size
+- Archive extraction returns errors
+- Download Manager only supports single-file models
+- No risk of libarchive symbol conflicts
+- Compatible with other libraries that include libarchive
+
+## Affected APIs
+
+### Runtime errors
+
+These APIs are built but return errors when libarchive is disabled:
+
+| API | Description |
+|-----|-------------|
+| `extractTarBz2(sourcePath, targetPath, force, promise)` | Rejects with an error message (e.g., "libarchive not available"). Does not crash. |
+| `cancelExtractTarBz2()` | Becomes a no-op since there's no extraction to cancel. |
+
+### Still working
+
+These APIs continue to work normally:
+
+| API | Description |
+|-----|-------------|
+| `computeFileSha256(filePath, promise)` | Implemented using only standard I/O and bundled crypto code. Does **not** use libarchive. |
+
+All other features (STT, TTS, FFmpeg audio conversion, model detection) are unaffected by the libarchive flag.
+
+## Trade-offs and Limitations
+
+### 1. No built-in archive extraction
+
+You must handle `.tar.bz2` extraction yourself if needed:
+
+- Use another JavaScript or native library for tar.bz2 extraction
+- Or ship models in extracted form (bundled assets or PAD)
+- Or only use single-file `.onnx` models
+
+### 2. No runtime use of another libarchive
+
+Disabling libarchive means this SDK's native code is **compiled without libarchive**. The extraction helper is stubbed and always returns an error. The SDK does **not** call into another app's libarchive library.
+
+This prevents shipping a duplicate `libarchive.so` but does not provide "shared" libarchive behavior.
+
+### 3. Safe coexistence with other libarchive libraries
+
+Because this SDK no longer links or uses libarchive when disabled, there is **no risk** of ABI or version mismatch with another libarchive in your app's process.
+
+## Troubleshooting symbol conflicts
+
+### When crashes can still occur
+
+**If libarchive is NOT disabled** and your app loads a different libarchive from another dependency:
+
+- Two libarchive implementations can exist in the same process
+- Depending on load order and symbol resolution, you can get conflicts or undefined behavior
+- Symptoms include crashes during archive operations or symbol resolution errors
+
+**Mitigation:** Set `sherpaOnnxDisableLibarchive=true` so only one libarchive (or none from this SDK) is present.
+
+**If libarchive is disabled** and you call extraction APIs:
+
+- The promise is rejected with an error (e.g., "libarchive not available")
+- It does **not** crash the process
+- Your app should handle the rejection gracefully
+
+## Summary
+
+| Configuration | Effect |
+|--------------|--------|
+| **`sherpaOnnxDisableLibarchive=true`** | No libarchive linked or shipped; build succeeds without libarchive; `extractTarBz2` rejects with error; `cancelExtractTarBz2` is a no-op; `computeFileSha256` still works. Download Manager: only single-file models work; archive models fail at extraction. Use when you have another libarchive in your app or don't need archive extraction. |
+| **Default (unset or false)** | libarchive is required; extraction APIs work; Download Manager supports both archive and single-file models. Do not combine with another libarchive unless you accept the risk of conflicts. |
+
+<Note>
+  This configuration only affects Android builds. iOS builds have different archive handling and are unaffected by this flag.
+</Note>

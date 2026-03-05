@@ -1,0 +1,511 @@
+---
+title: Other STT Models
+description: WeNet, SenseVoice, FunASR, Moonshine, and specialized speech recognition models
+---
+
+# Other STT Models
+
+This page covers additional STT model types supported by react-native-sherpa-onnx, including specialized and emerging architectures.
+
+## Overview
+
+<CardGroup cols={2}>
+  <Card title="WeNet CTC" icon="cube">
+    Compact CTC models from WeNet framework
+  </Card>
+  <Card title="SenseVoice" icon="heart">
+    Multilingual with emotion detection and punctuation
+  </Card>
+  <Card title="FunASR Nano" icon="brain">
+    LLM-based ASR with prompt customization
+  </Card>
+  <Card title="Moonshine" icon="moon">
+    Modern streaming-capable lightweight ASR
+  </Card>
+  <Card title="Fire Red ASR" icon="fire">
+    Encoder-decoder ASR models
+  </Card>
+  <Card title="Dolphin" icon="fish">
+    Single-model CTC for compact deployment
+  </Card>
+  <Card title="Canary" icon="bird">
+    NeMo multilingual model
+  </Card>
+  <Card title="Omnilingual" icon="globe">
+    Wide language coverage CTC model
+  </Card>
+  <Card title="MedASR" icon="stethoscope">
+    Medical ASR for healthcare applications
+  </Card>
+  <Card title="Telespeech CTC" icon="phone">
+    Telephony-optimized CTC model
+  </Card>
+  <Card title="Tone CTC" icon="gauge">
+    Ultra-lightweight streaming CTC (t-one)
+  </Card>
+</CardGroup>
+
+---
+
+## WeNet CTC
+
+**`modelType: 'wenet_ctc'`**
+
+### Description
+CTC models from the WeNet framework, designed for compact deployment.
+
+### Characteristics
+- **Streaming**: ❌ No (offline only)
+- **Speed**: ⭐⭐⭐⭐⭐ Very Fast
+- **Size**: Small (compact models)
+- **Languages**: Limited (depends on model variant)
+
+### Configuration
+
+```typescript
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/sherpa-onnx-wenet-chinese' },
+  modelType: 'wenet_ctc',
+  preferInt8: true,
+});
+```
+
+### Download
+[WeNet CTC Models](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/offline-ctc/wenet/index.html)
+
+### Model Detection
+- Folder name should contain `wenet`
+- Files: `model.onnx`, `tokens.txt`
+
+---
+
+## SenseVoice
+
+**`modelType: 'sense_voice'`**
+
+### Description
+Multilingual model with **emotion detection** and automatic punctuation. Excellent for applications requiring sentiment analysis.
+
+### Characteristics
+- **Streaming**: ❌ No
+- **Accuracy**: ⭐⭐⭐⭐
+- **Languages**: Chinese, English, Cantonese, Japanese, Korean
+- **Special**: Emotion labels + punctuation
+
+### Configuration
+
+```typescript
+import { createSTT, getSenseVoiceLanguages } from 'react-native-sherpa-onnx/stt';
+
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/sherpa-onnx-sense-voice-zh-en' },
+  modelType: 'sense_voice',
+  modelOptions: {
+    senseVoice: {
+      language: 'auto', // 'auto', 'zh', 'en', 'yue', 'ja', 'ko'
+      useItn: true,     // Inverse text normalization
+    }
+  },
+});
+
+const result = await stt.transcribeFile('/path/to/audio.wav');
+console.log('Text:', result.text);
+console.log('Emotion:', result.emotion); // e.g. 'happy', 'neutral'
+```
+
+### Language Helpers
+
+```typescript
+const languages = getSenseVoiceLanguages();
+// [{ id: 'auto', name: 'Auto' }, { id: 'zh', name: 'Chinese' }, ...]
+```
+
+### Download
+[SenseVoice Models](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/sense-voice/index.html)
+
+### Model Detection
+- Folder name should contain `sense` or `sensevoice`
+
+---
+
+## FunASR Nano
+
+**`modelType: 'funasr_nano'`**
+
+### Description
+Lightweight **LLM-based ASR** with customizable system/user prompts. Supports advanced decoding options.
+
+### Characteristics
+- **Streaming**: ❌ No
+- **Special**: LLM-based with prompt engineering
+- **Languages**: Chinese, English, Japanese (depends on variant)
+
+### Configuration
+
+```typescript
+import { createSTT, getFunasrNanoLanguages } from 'react-native-sherpa-onnx/stt';
+
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/sherpa-onnx-funasr-nano-zh' },
+  modelType: 'funasr_nano',
+  modelOptions: {
+    funasrNano: {
+      systemPrompt: 'You are a speech recognition system.',
+      userPrompt: 'Transcribe the following audio.',
+      language: '中文',        // Chinese labels: '中文', '英文', '日文'
+      itn: true,              // Inverse text normalization
+      hotwords: 'React Native:2.5,Sherpa ONNX:3.0',
+      maxNewTokens: 512,
+      temperature: 0.8,
+      topP: 0.95,
+      seed: 42,
+    }
+  },
+});
+```
+
+### Language Helpers
+
+```typescript
+const languages = getFunasrNanoLanguages();
+// [{ id: '中文', name: 'Chinese' }, { id: '英文', name: 'English' }, ...]
+```
+
+### Download
+[FunASR Nano Models](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/funasr-nano/index.html)
+
+### Model Detection
+- Folder name should contain `funasr` or `funasr-nano`
+- Files: `encoder_adaptor`, `llm`, `embedding`, tokenizer directory
+
+---
+
+## Moonshine
+
+**`modelType: 'moonshine'` (v1) or `'moonshine_v2'` (v2)**
+
+### Description
+Modern streaming-capable ASR with two architecture versions.
+
+**Moonshine v1**: Four-part architecture (preprocess, encode, uncached/cached decode)  
+**Moonshine v2**: Two-part architecture (encoder + merged decoder)
+
+### Characteristics
+- **Streaming**: ✅ Yes (both v1 and v2)
+- **Speed**: ⭐⭐⭐⭐
+- **Languages**: Limited (check model variant)
+
+### Configuration
+
+```typescript
+import { createStreamingSTT } from 'react-native-sherpa-onnx/stt';
+
+// Moonshine v2 (recommended)
+const engine = await createStreamingSTT({
+  modelPath: { type: 'asset', path: 'models/sherpa-onnx-moonshine-v2' },
+  modelType: 'auto', // Detects v2 if both present
+});
+
+// Moonshine v1
+const engineV1 = await createStreamingSTT({
+  modelPath: { type: 'asset', path: 'models/sherpa-onnx-moonshine-v1' },
+  modelType: 'moonshine',
+});
+```
+
+### Download
+[Moonshine Models](https://k2-fsa.github.io/sherpa/onnx/moonshine/index.html)
+
+### Model Detection
+- Folder name should contain `moonshine`
+- V1: `preprocess.onnx`, `encode.onnx`, `uncached_decode.onnx`, `cached_decode.onnx`
+- V2: `encoder.onnx` or `encoder.ort`, merged decoder
+
+---
+
+## Fire Red ASR
+
+**`modelType: 'fire_red_asr'`**
+
+### Description
+Encoder-decoder ASR models from the Fire Red project.
+
+### Characteristics
+- **Streaming**: ❌ No
+- **Speed**: ⭐⭐⭐
+- **Languages**: Limited (depends on variant)
+
+### Configuration
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/sherpa-onnx-fire-red-asr' },
+  modelType: 'fire_red_asr',
+});
+```
+
+### Download
+[Fire Red ASR Models](https://k2-fsa.github.io/sherpa/onnx/FireRedAsr/index.html)
+
+### Model Detection
+- Folder name should contain `fire_red` or `fire-red`
+- Files: encoder, decoder directories
+
+---
+
+## Dolphin
+
+**`modelType: 'dolphin'`**
+
+### Description
+Single-model CTC for compact deployment.
+
+### Characteristics
+- **Streaming**: ❌ No
+- **Speed**: ⭐⭐⭐⭐⭐
+- **Size**: Very Small
+- **Languages**: Limited
+
+### Configuration
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/sherpa-onnx-dolphin' },
+  modelType: 'dolphin',
+  preferInt8: true,
+});
+```
+
+### Download
+[Dolphin Models](https://k2-fsa.github.io/sherpa/onnx/Dolphin/index.html)
+
+### Model Detection
+- Folder name should contain `dolphin`
+- Files: `model.onnx`, `tokens.txt`
+
+---
+
+## Canary
+
+**`modelType: 'canary'`**
+
+### Description
+NeMo Canary multilingual model with source/target language configuration.
+
+### Characteristics
+- **Streaming**: ❌ No
+- **Multilingual**: ✅ Yes (English, Spanish, German, French)
+- **Accuracy**: ⭐⭐⭐⭐
+
+### Configuration
+
+```typescript
+import { createSTT, getCanaryLanguages } from 'react-native-sherpa-onnx/stt';
+
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/sherpa-onnx-nemo-canary' },
+  modelType: 'canary',
+  modelOptions: {
+    canary: {
+      srcLang: 'en',    // Source: English, Spanish, German, French
+      tgtLang: 'en',    // Target (typically 'en')
+      usePnc: true,     // Use punctuation
+    }
+  },
+});
+```
+
+### Language Helpers
+
+```typescript
+const languages = getCanaryLanguages();
+// [{ id: 'en', name: 'English' }, { id: 'es', name: 'Spanish' }, ...]
+```
+
+### Download
+[Canary Models](https://k2-fsa.github.io/sherpa/onnx/nemo/canary.html)
+
+### Model Detection
+- Folder name should contain `canary`
+
+---
+
+## Omnilingual
+
+**`modelType: 'omnilingual'`**
+
+### Description
+Omnilingual CTC model with wide language coverage.
+
+### Characteristics
+- **Streaming**: ❌ No
+- **Multilingual**: ✅ Yes (many languages)
+- **Speed**: ⭐⭐⭐
+
+### Configuration
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/sherpa-onnx-omnilingual' },
+  modelType: 'omnilingual',
+});
+```
+
+### Download
+[Omnilingual Models](https://k2-fsa.github.io/sherpa/onnx/omnilingual-asr/index.html)
+
+### Model Detection
+- Folder name should contain `omnilingual`
+
+---
+
+## MedASR
+
+**`modelType: 'medasr'`**
+
+### Description
+Medical ASR CTC model optimized for healthcare terminology.
+
+### Characteristics
+- **Streaming**: ❌ No
+- **Domain**: Medical/Healthcare
+- **Speed**: ⭐⭐⭐⭐
+
+### Configuration
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/sherpa-onnx-medasr' },
+  modelType: 'medasr',
+});
+```
+
+### Model Detection
+- Folder name should contain `medasr`
+
+---
+
+## Telespeech CTC
+
+**`modelType: 'telespeech_ctc'`**
+
+### Description
+Telespeech CTC model optimized for telephony audio.
+
+### Characteristics
+- **Streaming**: ❌ No
+- **Domain**: Telephony (8kHz audio)
+- **Speed**: ⭐⭐⭐⭐
+
+### Configuration
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/sherpa-onnx-telespeech' },
+  modelType: 'telespeech_ctc',
+});
+```
+
+### Download
+[Telespeech Models](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/telespeech/index.html)
+
+### Model Detection
+- Folder name should contain `telespeech`
+
+---
+
+## Tone CTC (t-one)
+
+**`modelType: 'tone_ctc'`**
+
+### Description
+Ultra-lightweight **streaming CTC** model (t-one). Excellent for resource-constrained devices.
+
+### Characteristics
+- **Streaming**: ✅ Yes
+- **Speed**: ⭐⭐⭐⭐⭐ Very Fast
+- **Size**: Very Small
+- **Memory**: ⭐⭐⭐⭐⭐ Very Low
+
+### Configuration
+
+```typescript
+import { createStreamingSTT } from 'react-native-sherpa-onnx/stt';
+
+const engine = await createStreamingSTT({
+  modelPath: { type: 'asset', path: 'models/sherpa-onnx-streaming-t-one-russian' },
+  modelType: 'tone_ctc',
+  numThreads: 2,
+});
+```
+
+### Download
+[Tone CTC Models](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/online-ctc/index.html)
+
+### Model Detection
+- Folder name should contain `t-one`, `t_one`, or the word `tone` (as standalone word)
+- Files: `model.onnx`, `tokens.txt`
+
+---
+
+## Comparison Table
+
+| Model | Streaming | Multilingual | Speed | Special Feature |
+|-------|-----------|--------------|-------|----------------|
+| **WeNet CTC** | ❌ | Limited | Very Fast | Compact |
+| **SenseVoice** | ❌ | 5 langs | Medium | Emotion + punctuation |
+| **FunASR Nano** | ❌ | Limited | Medium | LLM-based with prompts |
+| **Moonshine** | ✅ | Limited | Fast | Modern streaming |
+| **Fire Red ASR** | ❌ | Limited | Medium | Encoder-decoder |
+| **Dolphin** | ❌ | Limited | Very Fast | Ultra-compact |
+| **Canary** | ❌ | 4 langs | Medium | NeMo multilingual |
+| **Omnilingual** | ❌ | Many | Medium | Wide coverage |
+| **MedASR** | ❌ | English | Fast | Medical domain |
+| **Telespeech** | ❌ | Limited | Fast | Telephony (8kHz) |
+| **Tone CTC** | ✅ | Limited | Very Fast | Ultra-lightweight |
+
+---
+
+## Choosing a Specialized Model
+
+### For Emotion Detection
+- **SenseVoice** – Provides emotion labels in result
+
+### For Medical/Healthcare
+- **MedASR** – Optimized for medical terminology
+
+### For Telephony
+- **Telespeech CTC** – Designed for 8kHz phone audio
+
+### For Low-End Devices
+- **Tone CTC** – Ultra-lightweight streaming
+- **Dolphin** – Very small offline model
+- **WeNet CTC** – Compact deployment
+
+### For LLM-Based Flexibility
+- **FunASR Nano** – Prompt engineering for ASR
+
+### For Modern Streaming
+- **Moonshine** – Latest streaming architecture
+- **Tone CTC** – Lightweight streaming
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="STT Overview" icon="list" href="/models/stt/overview">
+    Compare all STT model types
+  </Card>
+  <Card title="STT API" icon="code" href="/api/stt">
+    Detailed API documentation
+  </Card>
+  <Card title="Streaming STT" icon="waveform" href="/api/streaming-stt">
+    Real-time recognition guide
+  </Card>
+  <Card title="Model Setup" icon="download" href="/model-setup">
+    How to download and bundle models
+  </Card>
+</CardGroup>

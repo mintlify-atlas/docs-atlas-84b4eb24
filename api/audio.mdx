@@ -1,0 +1,308 @@
+---
+title: Audio Utilities
+description: Audio capture, conversion, and processing utilities
+---
+
+Utilities for working with audio in React Native, including live microphone capture and audio format conversion.
+
+## createPcmLiveStream()
+
+Create a PCM live stream from the device microphone with automatic resampling.
+
+```typescript
+function createPcmLiveStream(
+  options?: PcmLiveStreamOptions
+): PcmLiveStreamHandle
+```
+
+### Parameters
+
+<ParamField path="options" type="PcmLiveStreamOptions" optional>
+  Live stream configuration options.
+  
+  <Expandable title="properties">
+    <ParamField path="sampleRate" type="number" default={16000}>
+      Target sample rate in Hz (e.g., 16000 for STT).
+    </ParamField>
+    
+    <ParamField path="channelCount" type="number" default={1}>
+      Number of audio channels (1 = mono, 2 = stereo).
+    </ParamField>
+    
+    <ParamField path="bufferSizeFrames" type="number" default={0}>
+      Buffer size in frames (0 = auto).
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Returns
+
+<ResponseField name="PcmLiveStreamHandle" type="object">
+  <Expandable title="methods">
+    <ResponseField name="start" type="() => Promise<void>">
+      Start capturing audio from microphone. Requires `RECORD_AUDIO` permission (Android) and `NSMicrophoneUsageDescription` (iOS).
+    </ResponseField>
+    
+    <ResponseField name="stop" type="() => Promise<void>">
+      Stop capturing audio.
+    </ResponseField>
+    
+    <ResponseField name="onData" type="(callback: (samples: Float32Array, sampleRate: number) => void) => () => void">
+      Register callback for audio data. Returns unsubscribe function.
+    </ResponseField>
+    
+    <ResponseField name="onError" type="(callback: (message: string) => void) => () => void">
+      Register callback for errors. Returns unsubscribe function.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Permissions
+
+**Android:** Add to `AndroidManifest.xml`:
+```xml
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
+```
+
+**iOS:** Add to `Info.plist`:
+```xml
+<key>NSMicrophoneUsageDescription</key>
+<string>This app needs microphone access for speech recognition</string>
+```
+
+Request permissions at runtime:
+```typescript
+import { PermissionsAndroid, Platform } from 'react-native';
+
+if (Platform.OS === 'android') {
+  await PermissionsAndroid.request(
+    PermissionsAndroid.PERMISSIONS.RECORD_AUDIO
+  );
+}
+```
+
+### Example: Basic Microphone Capture
+
+```typescript
+import { createPcmLiveStream } from 'react-native-sherpa-onnx/audio';
+
+const mic = createPcmLiveStream({
+  sampleRate: 16000,
+  channelCount: 1,
+});
+
+// Handle audio data
+const unsubscribeData = mic.onData((samples, sampleRate) => {
+  console.log('Received', samples.length, 'samples at', sampleRate, 'Hz');
+  // samples is Float32Array in range [-1, 1]
+});
+
+// Handle errors
+const unsubscribeError = mic.onError((message) => {
+  console.error('Microphone error:', message);
+});
+
+// Start recording
+await mic.start();
+
+// Later: stop recording
+await mic.stop();
+unsubscribeData();
+unsubscribeError();
+```
+
+### Example: Live Speech Recognition
+
+```typescript
+import { createPcmLiveStream } from 'react-native-sherpa-onnx/audio';
+import { createStreamingSTT, assetModelPath } from 'react-native-sherpa-onnx/stt';
+
+const engine = await createStreamingSTT({
+  modelPath: assetModelPath('models/streaming-zipformer-en'),
+  modelType: 'auto',
+});
+
+const stream = await engine.createStream();
+
+const mic = createPcmLiveStream({ sampleRate: 16000 });
+
+const unsubscribe = mic.onData(async (samples, sampleRate) => {
+  const { result, isEndpoint } = await stream.processAudioChunk(
+    samples,
+    sampleRate
+  );
+  
+  console.log('Live transcription:', result.text);
+  
+  if (isEndpoint) {
+    console.log('Utterance complete:', result.text);
+    await stream.reset();
+  }
+});
+
+await mic.start();
+
+// Later: cleanup
+await mic.stop();
+unsubscribe();
+await stream.release();
+await engine.destroy();
+```
+
+---
+
+## convertAudioToFormat()
+
+Convert any supported audio file to a requested format.
+
+```typescript
+function convertAudioToFormat(
+  inputPath: string,
+  outputPath: string,
+  format: string,
+  outputSampleRateHz?: number
+): Promise<void>
+```
+
+### Parameters
+
+<ParamField path="inputPath" type="string" required>
+  Absolute path to input audio file.
+</ParamField>
+
+<ParamField path="outputPath" type="string" required>
+  Absolute path for output file.
+</ParamField>
+
+<ParamField path="format" type="string" required>
+  Output format: `'mp3'`, `'flac'`, `'wav'`, etc.
+</ParamField>
+
+<ParamField path="outputSampleRateHz" type="number" optional>
+  Output sample rate in Hz. For MP3: 32000, 44100, or 48000 (default: 44100). For WAV: always 16000 mono (sherpa-onnx).
+</ParamField>
+
+### Platform Support
+
+- **Android**: Requires FFmpeg prebuilts
+- **iOS**: Supported
+
+### Example
+
+```typescript
+import { convertAudioToFormat } from 'react-native-sherpa-onnx/audio';
+import { DocumentDirectoryPath } from '@dr.pogodin/react-native-fs';
+
+// Convert to MP3
+await convertAudioToFormat(
+  `${DocumentDirectoryPath}/input.wav`,
+  `${DocumentDirectoryPath}/output.mp3`,
+  'mp3',
+  44100
+);
+
+// Convert to FLAC
+await convertAudioToFormat(
+  `${DocumentDirectoryPath}/input.m4a`,
+  `${DocumentDirectoryPath}/output.flac`,
+  'flac'
+);
+```
+
+---
+
+## convertAudioToWav16k()
+
+Convert any supported audio file to WAV 16 kHz mono 16-bit PCM.
+
+```typescript
+function convertAudioToWav16k(
+  inputPath: string,
+  outputPath: string
+): Promise<void>
+```
+
+This is a convenience function for preparing audio for STT (most models expect 16 kHz mono).
+
+### Parameters
+
+<ParamField path="inputPath" type="string" required>
+  Absolute path to input audio file.
+</ParamField>
+
+<ParamField path="outputPath" type="string" required>
+  Absolute path for output WAV file.
+</ParamField>
+
+### Platform Support
+
+- **Android**: Requires FFmpeg prebuilts
+- **iOS**: Supported
+
+### Example
+
+```typescript
+import { convertAudioToWav16k } from 'react-native-sherpa-onnx/audio';
+import { createSTT, assetModelPath } from 'react-native-sherpa-onnx/stt';
+import { DocumentDirectoryPath } from '@dr.pogodin/react-native-fs';
+
+const inputPath = `${DocumentDirectoryPath}/recording.m4a`;
+const wavPath = `${DocumentDirectoryPath}/recording-16k.wav`;
+
+// Convert to 16kHz mono WAV
+await convertAudioToWav16k(inputPath, wavPath);
+
+// Transcribe
+const stt = await createSTT({
+  modelPath: assetModelPath('models/whisper-tiny'),
+});
+
+const result = await stt.transcribeFile(wavPath);
+console.log('Transcription:', result.text);
+
+await stt.destroy();
+```
+
+---
+
+## Types
+
+### PcmLiveStreamOptions
+
+Configuration options for live PCM stream.
+
+```typescript
+interface PcmLiveStreamOptions {
+  /** Target sample rate in Hz (e.g., 16000) */
+  sampleRate?: number;
+  
+  /** Number of audio channels (1 = mono, 2 = stereo) */
+  channelCount?: number;
+  
+  /** Buffer size in frames (0 = auto) */
+  bufferSizeFrames?: number;
+}
+```
+
+### PcmLiveStreamHandle
+
+Handle returned by `createPcmLiveStream()`.
+
+```typescript
+interface PcmLiveStreamHandle {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  onData(
+    callback: (samples: Float32Array, sampleRate: number) => void
+  ): () => void;
+  onError(callback: (message: string) => void): () => void;
+}
+```
+
+---
+
+## See Also
+
+- [Streaming STT](/api/stt/streaming-stt) - Using live audio with speech recognition
+- [Streaming TTS](/api/tts/streaming-tts) - Built-in PCM playback
+- [Core Functions](/api/core) - Library initialization

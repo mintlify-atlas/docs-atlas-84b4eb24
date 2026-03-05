@@ -1,0 +1,527 @@
+---
+title: 'Model Detection'
+description: 'Auto-detect model types without full initialization'
+icon: 'magnifying-glass'
+---
+
+## Overview
+
+**Model detection** allows you to identify STT and TTS model types and structures **without initializing** the full recognizer or engine. This is useful for:
+
+- **UI/UX**: Show model information before initialization
+- **Validation**: Verify model files are complete and correct
+- **Configuration**: Auto-configure based on detected model type
+- **Error prevention**: Catch model issues early
+
+<Info>
+  Model detection is **stateless** and requires no engine instance. It uses the same native file-based detection as model initialization.
+</Info>
+
+---
+
+## STT Model Detection
+
+### detectSttModel
+
+Detect STT model type and structure without initializing the recognizer.
+
+```typescript
+import { detectSttModel } from 'react-native-sherpa-onnx/stt';
+
+const result = await detectSttModel(
+  { type: 'asset', path: 'models/sherpa-onnx-whisper-tiny-en' },
+  { preferInt8: false }
+);
+
+if (result.success && result.detectedModels.length > 0) {
+  console.log('Detected type:', result.modelType);
+  console.log('All detected models:', result.detectedModels);
+  // Output:
+  // Detected type: whisper
+  // All detected models: [{ type: 'whisper', modelDir: '/path/to/model' }]
+} else {
+  console.error('Model detection failed - no valid model found');
+}
+```
+
+<ParamField path="modelPath" type="ModelPathConfig" required>
+  Model path configuration
+  
+  <Expandable title="ModelPathConfig types">
+    ```typescript
+    type ModelPathConfig =
+      | { type: 'asset'; path: string }  // Asset from app bundle
+      | { type: 'file'; path: string }   // Absolute file path
+      | { type: 'auto'; path: string };  // Auto-detect (tries asset, then file)
+    ```
+  </Expandable>
+</ParamField>
+
+<ParamField path="options" type="object" optional>
+  <Expandable title="Detection options">
+    <ParamField path="preferInt8" type="boolean" default={false}>
+      Prefer int8 quantized models when multiple variants are found
+    </ParamField>
+    
+    <ParamField path="modelType" type="STTModelType" optional>
+      Hint for the expected model type (e.g., `'whisper'`, `'transducer'`)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="result" type="object">
+  Detection result object
+  
+  <Expandable title="Detection result properties">
+    <ResponseField name="success" type="boolean">
+      `true` if at least one valid model was detected
+    </ResponseField>
+    
+    <ResponseField name="detectedModels" type="Array<{ type: string; modelDir: string }>">
+      Array of all detected model configurations
+      - `type`: Model type (e.g., `'whisper'`, `'transducer'`, `'paraformer'`)
+      - `modelDir`: Absolute path to the model directory
+    </ResponseField>
+    
+    <ResponseField name="modelType" type="string" optional>
+      Primary detected model type (first entry from `detectedModels`)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+### Example: Pre-validation
+
+Validate model before showing initialization UI:
+
+```typescript
+import { detectSttModel } from 'react-native-sherpa-onnx/stt';
+
+const modelPath = { type: 'file', path: downloadedModelPath };
+
+// Detect model type before initialization
+const detection = await detectSttModel(modelPath);
+
+if (!detection.success) {
+  Alert.alert(
+    'Invalid Model',
+    'The downloaded model files are incomplete or corrupted. Please download again.'
+  );
+  return;
+}
+
+// Show detected model info to user
+setModelInfo({
+  type: detection.modelType,
+  path: detection.detectedModels[0].modelDir,
+  ready: true,
+});
+
+// Proceed with initialization
+const stt = await createSTT({
+  modelPath,
+  modelType: detection.modelType,
+});
+```
+
+---
+
+### Example: Auto-configuration
+
+Auto-configure based on detected model type:
+
+```typescript
+import { detectSttModel, createSTT } from 'react-native-sherpa-onnx/stt';
+
+const modelPath = { type: 'asset', path: 'models/my-model' };
+
+// Detect model type first
+const detection = await detectSttModel(modelPath);
+
+if (!detection.success) {
+  throw new Error('Model detection failed');
+}
+
+// Auto-configure based on detected type
+const modelType = detection.modelType;
+let config = {};
+
+if (modelType === 'transducer' || modelType === 'nemo_transducer') {
+  // Enable hotwords for transducer models
+  config = {
+    hotwordsFile: '/path/to/hotwords.txt',
+    modelingUnit: 'bpe',
+  };
+} else if (modelType === 'whisper') {
+  // Configure language for Whisper
+  config = {
+    modelOptions: {
+      whisper: {
+        language: 'en',
+        task: 'transcribe',
+      },
+    },
+  };
+}
+
+// Initialize with auto-configured options
+const stt = await createSTT({
+  modelPath,
+  modelType,
+  ...config,
+});
+```
+
+---
+
+## TTS Model Detection
+
+### detectTtsModel
+
+Detect TTS model type and structure without initializing the engine.
+
+```typescript
+import { detectTtsModel } from 'react-native-sherpa-onnx/tts';
+
+const result = await detectTtsModel(
+  { type: 'asset', path: 'models/vits-piper-en_US-lessac-medium' },
+  { modelType: 'auto' }
+);
+
+if (result.success) {
+  console.log('Detected TTS type:', result.modelType);
+  console.log('Detected models:', result.detectedModels);
+  // Output:
+  // Detected TTS type: vits
+  // Detected models: [{ type: 'vits', modelDir: '/path/to/model' }]
+}
+```
+
+<ParamField path="modelPath" type="ModelPathConfig" required>
+  Model path configuration (same as STT)
+</ParamField>
+
+<ParamField path="options" type="object" optional>
+  <Expandable title="Detection options">
+    <ParamField path="modelType" type="TTSModelType" default="'auto'">
+      Hint for the expected model type (e.g., `'vits'`, `'kokoro'`, `'matcha'`)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="result" type="object">
+  Detection result (same structure as STT detection)
+  
+  <Expandable title="Detection result properties">
+    <ResponseField name="success" type="boolean">
+      `true` if at least one valid model was detected
+    </ResponseField>
+    
+    <ResponseField name="detectedModels" type="Array<{ type: string; modelDir: string }>">
+      Array of all detected model configurations
+      - `type`: Model type (e.g., `'vits'`, `'kokoro'`, `'matcha'`, `'kitten'`, `'pocket'`, `'zipvoice'`)
+      - `modelDir`: Absolute path to the model directory
+    </ResponseField>
+    
+    <ResponseField name="modelType" type="string" optional>
+      Primary detected model type
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+### Example: Show model info before TTS init
+
+```typescript
+import { detectTtsModel, createTTS } from 'react-native-sherpa-onnx/tts';
+
+const modelPath = { type: 'file', path: downloadedModelPath };
+
+// Detect TTS model
+const detection = await detectTtsModel(modelPath);
+
+if (!detection.success) {
+  Alert.alert('Invalid TTS Model', 'Model files are incomplete.');
+  return;
+}
+
+// Show model info
+setTtsModelInfo({
+  type: detection.modelType,
+  supportsMultipleSpeakers: ['vits', 'kokoro'].includes(detection.modelType),
+  ready: true,
+});
+
+// Initialize TTS
+const tts = await createTTS({
+  modelPath,
+  modelType: detection.modelType,
+});
+
+// Get additional info after init
+const info = await tts.getModelInfo();
+console.log('Sample rate:', info.sampleRate);
+console.log('Number of speakers:', info.numSpeakers);
+```
+
+---
+
+## Common Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Download Validation" icon="circle-check">
+    Verify downloaded models are complete before marking them as "ready" in the UI.
+    
+    ```typescript
+    const detection = await detectSttModel(downloadedPath);
+    if (detection.success) {
+      markModelAsReady(modelId);
+    }
+    ```
+  </Card>
+  
+  <Card title="Model Type Display" icon="tag">
+    Show model type information to users before initialization.
+    
+    ```typescript
+    const detection = await detectTtsModel(modelPath);
+    setModelType(detection.modelType);
+    ```
+  </Card>
+  
+  <Card title="Auto-configuration" icon="gear">
+    Automatically configure options based on detected model type.
+    
+    ```typescript
+    const detection = await detectSttModel(modelPath);
+    const hotwordsEnabled = 
+      sttSupportsHotwords(detection.modelType);
+    ```
+  </Card>
+  
+  <Card title="Error Prevention" icon="shield">
+    Catch model issues early before attempting full initialization.
+    
+    ```typescript
+    const detection = await detectSttModel(modelPath);
+    if (!detection.success) {
+      showErrorAndRedownload();
+    }
+    ```
+  </Card>
+</CardGroup>
+
+---
+
+## Detection vs Initialization
+
+<AccordionGroup>
+  <Accordion title="When to use detection">
+    Use **detection** when you need to:
+    
+    - Validate model files without loading them into memory
+    - Show model information in UI before initialization
+    - Check if a model is compatible with certain features (e.g., hotwords)
+    - Implement a model browser or manager
+    - Verify downloaded models are complete
+  </Accordion>
+  
+  <Accordion title="When to use initialization">
+    Use **initialization** when you're ready to:
+    
+    - Actually perform transcription or speech synthesis
+    - Load model weights into memory
+    - Create streams or generate audio
+    - Use the model for its intended purpose
+  </Accordion>
+  
+  <Accordion title="Performance comparison">
+    **Detection** is much faster than initialization:
+    
+    - **Detection**: ~10-100ms (just checks file existence and structure)
+    - **Initialization**: ~500-5000ms (loads model weights, allocates memory)
+    
+    Detection only validates file structure without loading model weights.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Multiple Model Detection
+
+Some model directories contain multiple model variants (e.g., fp32 and int8 quantized). Detection returns all found variants:
+
+```typescript
+const detection = await detectSttModel(
+  { type: 'asset', path: 'models/zipformer-en' },
+  { preferInt8: true }
+);
+
+if (detection.detectedModels.length > 1) {
+  console.log('Multiple model variants found:');
+  detection.detectedModels.forEach((model, index) => {
+    console.log(`  ${index + 1}. Type: ${model.type}, Path: ${model.modelDir}`);
+  });
+}
+
+// Primary model (respects preferInt8 option)
+console.log('Selected model type:', detection.modelType);
+```
+
+<Note>
+  The `preferInt8` option influences which model is selected as the primary `modelType` when multiple variants are found. Int8 models are smaller and faster but may have slightly lower accuracy.
+</Note>
+
+---
+
+## Error Handling
+
+```typescript
+import { detectSttModel } from 'react-native-sherpa-onnx/stt';
+
+try {
+  const detection = await detectSttModel(modelPath);
+  
+  if (!detection.success) {
+    // No valid model found
+    console.error('Model detection failed');
+    console.log('Attempted path:', modelPath.path);
+    
+    // Show user-friendly error
+    Alert.alert(
+      'Invalid Model',
+      'The model directory is missing required files. Please ensure the model was fully downloaded and extracted.'
+    );
+    return;
+  }
+  
+  if (detection.detectedModels.length === 0) {
+    // Edge case: success but no models (shouldn't happen)
+    console.error('Unexpected detection state');
+    return;
+  }
+  
+  // Success - proceed with model
+  console.log('Model valid:', detection.modelType);
+  
+} catch (error) {
+  // File system or permission errors
+  console.error('Detection error:', error);
+  Alert.alert('Detection Failed', error.message);
+}
+```
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Validate Before Init" icon="list-check">
+    Always detect models after download before marking them as ready or attempting initialization.
+  </Card>
+  
+  <Card title="Cache Detection Results" icon="database">
+    Cache detection results to avoid redundant file system checks. Only re-detect when model files change.
+  </Card>
+  
+  <Card title="Show Progress" icon="spinner">
+    Show loading indicators during detection, even though it's fast. Some devices may take longer.
+  </Card>
+  
+  <Card title="Handle Multiple Variants" icon="list">
+    When multiple models are detected, let users choose or automatically select based on device capabilities (e.g., int8 for lower-end devices).
+  </Card>
+</CardGroup>
+
+---
+
+## Integration with Download Manager
+
+Combine model detection with the download manager for robust model management:
+
+```typescript
+import { 
+  ModelCategory,
+  downloadModelByCategory,
+  getLocalModelPathByCategory 
+} from 'react-native-sherpa-onnx/download';
+import { detectSttModel, createSTT } from 'react-native-sherpa-onnx/stt';
+
+// 1. Download model
+await downloadModelByCategory(
+  ModelCategory.Stt,
+  'sherpa-onnx-whisper-tiny',
+  { onProgress: (p) => console.log(`${p.percent}%`) }
+);
+
+// 2. Get local path
+const localPath = await getLocalModelPathByCategory(
+  ModelCategory.Stt,
+  'sherpa-onnx-whisper-tiny'
+);
+
+if (!localPath) {
+  throw new Error('Model download failed');
+}
+
+// 3. Detect and validate
+const modelPath = { type: 'file' as const, path: localPath };
+const detection = await detectSttModel(modelPath);
+
+if (!detection.success) {
+  // Model files are corrupted - delete and re-download
+  await deleteModelByCategory(ModelCategory.Stt, 'sherpa-onnx-whisper-tiny');
+  throw new Error('Model validation failed - please re-download');
+}
+
+// 4. Initialize with detected type
+const stt = await createSTT({
+  modelPath,
+  modelType: detection.modelType,
+});
+
+console.log('STT ready with model type:', detection.modelType);
+```
+
+---
+
+## Type Definitions
+
+```typescript
+// STT detection
+export function detectSttModel(
+  modelPath: ModelPathConfig,
+  options?: { preferInt8?: boolean; modelType?: STTModelType }
+): Promise<{
+  success: boolean;
+  detectedModels: Array<{ type: string; modelDir: string }>;
+  modelType?: string;
+}>;
+
+// TTS detection
+export function detectTtsModel(
+  modelPath: ModelPathConfig,
+  options?: { modelType?: TTSModelType }
+): Promise<{
+  success: boolean;
+  detectedModels: Array<{ type: string; modelDir: string }>;
+  modelType?: string;
+}>;
+
+// Model path configuration
+type ModelPathConfig =
+  | { type: 'asset'; path: string }  // Asset from app bundle
+  | { type: 'file'; path: string }   // Absolute file path  
+  | { type: 'auto'; path: string };  // Auto-detect
+```
+
+---
+
+## Related APIs
+
+- [Model Download Manager](/advanced/download-manager) - Download and manage models
+- [STT Initialization](/api/stt/create-stt) - Initialize STT with detected model type
+- [TTS Initialization](/api/tts/create-tts) - Initialize TTS with detected model type
+- [Hotwords](/advanced/hotwords) - Use detection to check hotword support

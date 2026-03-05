@@ -1,0 +1,559 @@
+---
+title: 'Model Setup'
+description: 'Learn how to bundle, load, and manage STT/TTS models'
+icon: 'folder-open'
+---
+
+## Overview
+
+This guide explains how to set up and discover STT/TTS models in react-native-sherpa-onnx. Models can be:
+
+- **Bundled** in your app assets (main APK/IPA)
+- **Play Asset Delivery** (PAD) on Android for large models
+- **Downloaded** at runtime to filesystem
+- **Auto-detected** based on files present in directories
+
+<Note>
+**Auto-detection is file-based.** Folder names do not need to follow any specific pattern. The SDK detects model types by examining the files present in each directory.
+</Note>
+
+## Quick Start: Bundled Assets
+
+### File Structure
+
+```
+# Android: app/src/main/assets/
+assets/
+  models/
+    sherpa-onnx-whisper-tiny-en/
+      encoder.onnx
+      decoder.onnx
+      tokens.txt
+    vits-piper-en_US-lessac-low/
+      model.onnx
+      tokens.txt
+      espeak-ng-data/
+
+# iOS: Add as folder reference (blue) in Xcode
+# Resulting path: models/sherpa-onnx-whisper-tiny-en, models/vits-piper-en_US-lessac-low
+```
+
+### Usage
+
+```typescript
+import { listAssetModels } from 'react-native-sherpa-onnx';
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+import { createTTS } from 'react-native-sherpa-onnx/tts';
+
+// 1. List bundled models
+const models = await listAssetModels();
+const sttModels = models.filter((m) => m.hint === 'stt');
+const ttsModels = models.filter((m) => m.hint === 'tts');
+
+// 2. User selects a model
+const selectedFolder = 'sherpa-onnx-whisper-tiny-en';
+
+// 3. Initialize with asset path
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: `models/${selectedFolder}` },
+  modelType: 'auto',  // Auto-detect from files
+});
+
+// Use the engine
+const result = await stt.transcribeFile('/path/to/audio.wav');
+console.log(result.text);
+
+await stt.destroy();
+```
+
+<Tip>
+Use `modelType: 'auto'` to let the SDK automatically detect the model type based on files. This is the recommended approach.
+</Tip>
+
+## Quick Start: Play Asset Delivery (PAD)
+
+For large models (>100 MB), use Android's Play Asset Delivery to keep the base APK small.
+
+### File Structure
+
+```
+# Asset pack module: android/sherpa_models/
+sherpa_models/
+  src/main/assets/
+    models/
+      sherpa-onnx-whisper-tiny-en/
+        encoder.onnx
+        decoder.onnx
+        tokens.txt
+      vits-piper-en_US-lessac-low/
+        model.onnx
+        tokens.txt
+```
+
+### Usage
+
+```typescript
+import { DocumentDirectoryPath } from '@dr.pogodin/react-native-fs';
+import { getAssetPackPath, listModelsAtPath } from 'react-native-sherpa-onnx';
+import { createTTS } from 'react-native-sherpa-onnx/tts';
+
+const PAD_PACK = 'sherpa_models';
+
+// 1. Get PAD path (null if not installed with asset pack)
+const padPath = await getAssetPackPath(PAD_PACK);
+const basePath = padPath ?? `${DocumentDirectoryPath}/models`;
+
+// 2. List models at that path
+const models = await listModelsAtPath(basePath);
+const ttsModels = models.filter((m) => m.hint === 'tts');
+
+// 3. User selects a model
+const selectedFolder = 'vits-piper-en_US-lessac-low';
+const fullPath = `${basePath}/${selectedFolder}`;
+
+// 4. Initialize with file path
+const tts = await createTTS({
+  modelPath: { type: 'file', path: fullPath },
+  modelType: 'auto',
+});
+
+const audio = await tts.generateSpeech('Hello, world!');
+await tts.destroy();
+```
+
+<Info>
+**When to use PAD:**
+- Models are larger than 50-100 MB
+- You want to keep the base APK small
+- Users can download models on WiFi after install
+
+**When to use bundled assets:**
+- Models are small (less than 50 MB total)
+- You want offline-first functionality
+- Simpler setup and deployment
+</Info>
+
+## Model Discovery APIs
+
+### listAssetModels()
+
+List models bundled in the main app assets.
+
+```typescript
+import { listAssetModels } from 'react-native-sherpa-onnx';
+
+const models = await listAssetModels();
+// [
+//   { folder: 'sherpa-onnx-whisper-tiny-en', hint: 'stt' },
+//   { folder: 'vits-piper-en_US-lessac-low', hint: 'tts' },
+//   { folder: 'unknown-model', hint: 'unknown' },
+// ]
+
+const sttModels = models.filter((m) => m.hint === 'stt').map((m) => m.folder);
+const ttsModels = models.filter((m) => m.hint === 'tts').map((m) => m.folder);
+```
+
+**Returns:** `Array<{ folder: string, hint: 'stt' | 'tts' | 'unknown' }>`
+
+**Use when:** Models are bundled in the main app assets (Android: `assets/models/`, iOS: folder references).
+
+### listModelsAtPath(path, recursive?)
+
+List models at a filesystem path (PAD, downloads, custom directory).
+
+```typescript
+import { listModelsAtPath } from 'react-native-sherpa-onnx';
+
+const models = await listModelsAtPath('/path/to/models');
+// Same format as listAssetModels()
+
+// Recursive scan (for nested directories)
+const allModels = await listModelsAtPath('/path/to/models', true);
+```
+
+**Parameters:**
+- `path`: Absolute filesystem path to scan
+- `recursive`: Scan subdirectories (default: `false`)
+
+**Returns:** `Array<{ folder: string, hint: 'stt' | 'tts' | 'unknown' }>`
+
+**Use when:** Models are on the filesystem (PAD unpack path, `DocumentDirectoryPath`, downloads).
+
+### getAssetPackPath(packName)
+
+Get the path to an Android Play Asset Delivery pack.
+
+```typescript
+import { getAssetPackPath } from 'react-native-sherpa-onnx';
+
+const padPath = await getAssetPackPath('sherpa_models');
+if (padPath) {
+  console.log('PAD path:', padPath);
+  // e.g., /data/app/~~xyz/com.example.app/base.apk!/assets/models
+} else {
+  console.log('PAD not available (iOS or not installed with asset pack)');
+}
+```
+
+**Returns:** `Promise<string | null>`
+- **Android with PAD**: Path to pack's assets
+- **Android without PAD** or **iOS**: `null`
+
+<Warning>
+`getAssetPackPath()` returns `null` if:
+- On iOS (PAD is Android-only)
+- App was not installed with the asset pack (e.g., plain `installDebug`)
+- Asset pack name doesn't match
+
+Install with asset pack:
+```bash
+./gradlew :app:bundleDebug
+bundletool build-apks --bundle=app/build/outputs/bundle/debug/app-debug.aab \
+  --output=app.apks --local-testing
+bundletool install-apks --apks=app.apks
+```
+</Warning>
+
+## Model Path Configuration
+
+All `create*` functions accept a `ModelPathConfig`:
+
+```typescript
+type ModelPathConfig =
+  | { type: 'asset'; path: string }      // Bundled asset
+  | { type: 'file'; path: string }       // Filesystem path
+  | { type: 'auto'; path: string };      // Try asset, then file
+```
+
+### Asset Path
+
+For models bundled in app assets:
+
+```typescript
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/sherpa-onnx-whisper-tiny-en' },
+  modelType: 'auto',
+});
+```
+
+**Helper:**
+
+```typescript
+import { assetModelPath } from 'react-native-sherpa-onnx';
+
+const config = assetModelPath('models/sherpa-onnx-whisper-tiny-en');
+// { type: 'asset', path: 'models/sherpa-onnx-whisper-tiny-en' }
+```
+
+### File Path
+
+For models on the filesystem:
+
+```typescript
+import { createTTS } from 'react-native-sherpa-onnx/tts';
+
+const tts = await createTTS({
+  modelPath: { type: 'file', path: '/data/user/0/.../models/vits-piper-en' },
+  modelType: 'auto',
+});
+```
+
+**Helper:**
+
+```typescript
+import { fileModelPath } from 'react-native-sherpa-onnx';
+
+const config = fileModelPath('/absolute/path/to/model');
+// { type: 'file', path: '/absolute/path/to/model' }
+```
+
+### Auto Path
+
+Try asset first, then filesystem:
+
+```typescript
+import { autoModelPath } from 'react-native-sherpa-onnx';
+
+const stt = await createSTT({
+  modelPath: autoModelPath('models/my-model'),
+  modelType: 'auto',
+});
+```
+
+### Resolving Paths
+
+Convert a `ModelPathConfig` to an absolute path:
+
+```typescript
+import { resolveModelPath } from 'react-native-sherpa-onnx';
+
+const absolutePath = await resolveModelPath({
+  type: 'asset',
+  path: 'models/whisper-tiny',
+});
+
+console.log('Resolved to:', absolutePath);
+// Android: /data/app/.../base.apk!/assets/models/whisper-tiny
+// iOS: /var/containers/Bundle/Application/.../models/whisper-tiny
+```
+
+## Model Type Detection
+
+Detect model type without loading the model.
+
+### STT Model Detection
+
+```typescript
+import { detectSttModel } from 'react-native-sherpa-onnx/stt';
+
+const result = await detectSttModel(
+  { type: 'asset', path: 'models/sherpa-onnx-whisper-tiny-en' },
+  { preferInt8: true, modelType: 'auto' }
+);
+
+if (result.success) {
+  console.log('Detected type:', result.modelType);
+  console.log('Models found:', result.detectedModels);
+  // [{ type: 'whisper', modelDir: '/abs/path/...' }]
+  
+  if (result.modelType === 'whisper') {
+    // Show Whisper-specific options in UI
+  }
+} else {
+  console.error('Detection failed:', result.error);
+}
+```
+
+**Returns:**
+```typescript
+{
+  success: boolean;
+  detectedModels: Array<{ type: string; modelDir: string }>;
+  modelType?: string;           // Primary detected type
+  error?: string;               // Error message if failed
+  isHardwareSpecificUnsupported?: boolean;  // See below
+}
+```
+
+### TTS Model Detection
+
+```typescript
+import { detectTtsModel } from 'react-native-sherpa-onnx/tts';
+
+const result = await detectTtsModel(
+  { type: 'file', path: '/path/to/vits-model' },
+  { modelType: 'auto' }
+);
+
+if (result.success && (result.modelType === 'vits' || result.modelType === 'matcha')) {
+  // Show noise/length scale options
+}
+```
+
+**Use cases:**
+- Show model-specific options in UI before initialization
+- Validate model compatibility
+- Display model info to users
+
+## Combining Bundled and PAD Models
+
+Show both bundled and PAD models in one list:
+
+```typescript
+import { listAssetModels, getAssetPackPath, listModelsAtPath } from 'react-native-sherpa-onnx';
+
+type ModelSource = { folder: string; hint: string; source: 'asset' | 'pad' };
+
+// Bundled models
+const assetModels = await listAssetModels();
+const modelList: ModelSource[] = assetModels.map((m) => ({
+  ...m,
+  source: 'asset' as const,
+}));
+
+// PAD models (Android only)
+const padPath = await getAssetPackPath('sherpa_models');
+if (padPath) {
+  const padModels = await listModelsAtPath(padPath);
+  modelList.push(
+    ...padModels.map((m) => ({ ...m, source: 'pad' as const }))
+  );
+}
+
+// Now you have a unified list
+modelList.forEach((model) => {
+  console.log(`${model.folder} (${model.hint}, ${model.source})`);
+});
+
+// When user selects a model:
+const selected = modelList[0];
+const modelPath =
+  selected.source === 'asset'
+    ? { type: 'asset' as const, path: `models/${selected.folder}` }
+    : { type: 'file' as const, path: `${padPath}/${selected.folder}` };
+
+const stt = await createSTT({ modelPath, modelType: 'auto' });
+```
+
+## Int8 Quantization
+
+Some models have both full-precision and int8 quantized versions:
+
+- `model.onnx` (full precision)
+- `model.int8.onnx` (quantized)
+
+Use `preferInt8` to control which is loaded:
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/whisper-tiny' },
+  preferInt8: true,   // Prefer model.int8.onnx if present
+});
+```
+
+**Options:**
+- `true`: Prefer int8 (faster, smaller)
+- `false`: Prefer full precision (higher accuracy)
+- `undefined`: Try int8 first, fallback to full precision (default)
+
+## Hardware-Specific Models (Unsupported)
+
+Models built for specific hardware (RK35xx, Ascend, CANN, 910B, 310P3) are **not supported** on mobile:
+
+```typescript
+const result = await detectSttModel(
+  { type: 'file', path: '/path/to/model-rk3588' }
+);
+
+if (result.isHardwareSpecificUnsupported) {
+  console.error('Model requires unsupported hardware:', result.error);
+  // Show message: "This model is for specific hardware and not supported"
+}
+```
+
+The SDK detects these by path tokens (`rk3588`, `ascend`, `cann`, `910b`, `310p3`) and returns a clear error without crashing.
+
+## Example: Model Picker UI
+
+```typescript
+import React, { useEffect, useState } from 'react';
+import { View, Text, Button, FlatList } from 'react-native';
+import { listAssetModels } from 'react-native-sherpa-onnx';
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+
+type Model = { folder: string; hint: string };
+
+export function ModelPicker() {
+  const [models, setModels] = useState<Model[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
+  
+  useEffect(() => {
+    listAssetModels().then(setModels);
+  }, []);
+  
+  async function handleSelect(folder: string) {
+    setSelected(folder);
+    
+    const stt = await createSTT({
+      modelPath: { type: 'asset', path: `models/${folder}` },
+      modelType: 'auto',
+    });
+    
+    // Use STT engine...
+    
+    await stt.destroy();
+  }
+  
+  const sttModels = models.filter((m) => m.hint === 'stt');
+  
+  return (
+    <View>
+      <Text>Select STT Model:</Text>
+      <FlatList
+        data={sttModels}
+        keyExtractor={(item) => item.folder}
+        renderItem={({ item }) => (
+          <Button
+            title={item.folder}
+            onPress={() => handleSelect(item.folder)}
+          />
+        )}
+      />
+      {selected && <Text>Selected: {selected}</Text>}
+    </View>
+  );
+}
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Error: Model directory does not exist">
+    **Bundled assets:**
+    - Verify folder is in `assets/models/` (Android) or added as folder reference in Xcode (iOS)
+    - Rebuild the app after adding models
+    - Check the path: `models/folder-name` (no leading slash)
+    
+    **PAD:**
+    - Ensure app was installed with asset pack (not plain `installDebug`)
+    - Check `getAssetPackPath()` returns non-null
+    - Verify asset pack name matches in `build.gradle`
+    
+    **File:**
+    - Ensure path is absolute
+    - Verify directory exists on device
+  </Accordion>
+
+  <Accordion title="getAssetPackPath() returns null">
+    The app was not installed with the asset pack:
+    - Use `bundleDebug` + `bundletool` to build with PAD
+    - Plain `installDebug` does not include asset packs
+    - On iOS, PAD is not available (always returns null)
+  </Accordion>
+
+  <Accordion title="Cannot auto-detect model type">
+    The folder doesn't contain recognizable model files:
+    - Ensure all required files are present (e.g., encoder.onnx, decoder.onnx, tokens.txt)
+    - File names are case-sensitive
+    - Try passing explicit `modelType` instead of `'auto'`
+  </Accordion>
+
+  <Accordion title="List is empty (no models found)">
+    **Bundled:**
+    - Verify models are in the right location (`assets/models/` or Xcode folder reference)
+    - Rebuild the app
+    
+    **PAD:**
+    - Check `getAssetPackPath()` returns a path
+    - Verify you're passing that path to `listModelsAtPath()`
+    
+    **File:**
+    - Ensure path exists and contains model folders
+    - Try `recursive: true` if models are nested
+  </Accordion>
+
+  <Accordion title="Model works in one mode but not another (asset vs file)">
+    - Asset paths are relative: `models/whisper-tiny`
+    - File paths must be absolute: `/data/user/0/.../models/whisper-tiny`
+    - Use `resolveModelPath()` to debug path resolution
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Speech-to-Text" icon="microphone" href="/features/speech-to-text">
+    Use STT models for transcription
+  </Card>
+  <Card title="Text-to-Speech" icon="volume" href="/features/text-to-speech">
+    Use TTS models for speech generation
+  </Card>
+  <Card title="Execution Providers" icon="microchip" href="/features/execution-providers">
+    Hardware acceleration options
+  </Card>
+  <Card title="Streaming STT" icon="signal-stream" href="/features/streaming-stt">
+    Real-time speech recognition
+  </Card>
+</CardGroup>

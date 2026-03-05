@@ -1,0 +1,325 @@
+---
+title: Matcha Models
+description: High-quality acoustic model with vocoder for natural TTS
+---
+
+# Matcha Models
+
+Matcha is a **high-quality TTS model** that uses an acoustic model + vocoder pipeline to produce very natural-sounding speech. It's designed for applications where quality is the top priority.
+
+## Model Architecture
+
+Matcha uses a two-stage architecture:
+- **Acoustic Model** (`acoustic_model.onnx`) – Generates mel-spectrogram from text
+- **Vocoder** (`vocoder.onnx`) – Converts mel-spectrogram to waveform
+- **Tokens** (`tokens.txt`) – Text token vocabulary
+
+This separation allows for high-quality synthesis by using specialized neural networks for each stage.
+
+## When to Use
+
+<CardGroup cols={2}>
+  <Card title="High-Quality Audio" icon="star">
+    When naturalness and quality are more important than speed
+  </Card>
+  <Card title="Audiobook Narration" icon="book">
+    Professional-quality narration for long-form content
+  </Card>
+  <Card title="Content Creation" icon="video">
+    Voiceovers for videos, podcasts, and media
+  </Card>
+  <Card title="Expressive Speech" icon="face-smile">
+    Natural prosody and intonation
+  </Card>
+</CardGroup>
+
+## Supported Languages
+
+Matcha models are available for:
+- **English** (primary focus)
+- Some multilingual variants
+
+Check the [download page](https://k2-fsa.github.io/sherpa/onnx/tts/pretrained_models/matcha.html) for available languages.
+
+## Performance Characteristics
+
+| Aspect | Rating | Notes |
+|--------|--------|-------|
+| **Streaming** | ✅ Supported | Streaming generation available |
+| **Quality** | ⭐⭐⭐⭐⭐ | Excellent, very natural-sounding |
+| **Speed** | ⭐⭐⭐⭐ | Fast, but slower than VITS |
+| **Memory** | ⭐⭐⭐ | Moderate (two models: acoustic + vocoder) |
+| **Model Size** | Medium | Typically 50-100 MB (acoustic + vocoder) |
+
+## Download Links
+
+<Card title="Matcha Models" icon="download" href="https://k2-fsa.github.io/sherpa/onnx/tts/pretrained_models/matcha.html">
+  Browse and download pretrained Matcha models
+</Card>
+
+## Configuration Example
+
+### Basic TTS
+
+```typescript
+import { createTTS } from 'react-native-sherpa-onnx/tts';
+
+const tts = await createTTS({
+  modelPath: {
+    type: 'asset',
+    path: 'models/matcha-icefall-en'
+  },
+  modelType: 'matcha', // or 'auto'
+  numThreads: 2,
+});
+
+const audio = await tts.generateSpeech('Hello, world!');
+console.log('Generated:', audio.samples.length, 'samples at', audio.sampleRate, 'Hz');
+
+await tts.destroy();
+```
+
+### With Model Options
+
+```typescript
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/matcha-en' },
+  modelType: 'matcha',
+  modelOptions: {
+    matcha: {
+      noiseScale: 0.667,   // Voice variation
+      lengthScale: 1.0,    // Speech speed
+    }
+  },
+  numThreads: 2,
+});
+```
+
+### Streaming TTS
+
+```typescript
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/matcha-en' },
+  modelType: 'matcha',
+});
+
+const sampleRate = await tts.getSampleRate();
+await tts.startPcmPlayer(sampleRate, 1);
+
+await tts.generateSpeechStream('High quality streaming speech', { sid: 0, speed: 1.0 }, {
+  onChunk: async (chunk) => {
+    await tts.writePcmChunk(chunk.samples);
+  },
+  onEnd: async () => {
+    await tts.stopPcmPlayer();
+  },
+});
+
+await tts.destroy();
+```
+
+### Save to File
+
+```typescript
+import { createTTS, saveAudioToFile } from 'react-native-sherpa-onnx/tts';
+
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/matcha-en' },
+  modelType: 'matcha',
+});
+
+const audio = await tts.generateSpeech('Save this to a file');
+await saveAudioToFile(audio, '/path/to/output.wav');
+
+await tts.destroy();
+```
+
+## Model Options
+
+Matcha models support two tuning parameters:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `noiseScale` | `number` | 0.667 | Controls voice variation and expressiveness. Range: 0.0-1.0 |
+| `lengthScale` | `number` | 1.0 | Speech speed. < 1.0 = faster, > 1.0 = slower |
+
+### Tuning Examples
+
+```typescript
+// Clear, fast speech
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/matcha-en' },
+  modelType: 'matcha',
+  modelOptions: {
+    matcha: {
+      noiseScale: 0.4,    // Less variation
+      lengthScale: 0.9,   // Slightly faster
+    }
+  },
+});
+
+// Expressive, natural speech
+const tts2 = await createTTS({
+  modelPath: { type: 'asset', path: 'models/matcha-en' },
+  modelType: 'matcha',
+  modelOptions: {
+    matcha: {
+      noiseScale: 0.8,    // More expressive
+      lengthScale: 1.1,   // Slightly slower
+    }
+  },
+});
+```
+
+### Runtime Updates
+
+```typescript
+const tts = await createTTS({ ... });
+
+await tts.updateParams({
+  modelOptions: {
+    matcha: {
+      noiseScale: 0.7,
+      lengthScale: 1.2,
+    }
+  },
+});
+```
+
+## Model Detection
+
+Matcha models are **detected automatically** by:
+- Presence of `acoustic_model.onnx` + `vocoder.onnx`
+- No folder name pattern required
+
+Expected files:
+- `acoustic_model.onnx`
+- `vocoder.onnx`
+- `tokens.txt`
+
+## Performance Tips
+
+### Optimize Thread Count
+
+```typescript
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/matcha-en' },
+  numThreads: 4, // More threads for faster generation
+});
+```
+
+### Use Streaming for Long Text
+
+For better perceived performance:
+
+```typescript
+const longText = 'Long audiobook paragraph...';
+
+await tts.generateSpeechStream(longText, { sid: 0, speed: 1.0 }, {
+  onChunk: async (chunk) => {
+    await tts.writePcmChunk(chunk.samples); // Play while generating
+  },
+});
+```
+
+### Hardware Acceleration
+
+```typescript
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/matcha-en' },
+  provider: 'nnapi', // Android NNAPI
+  // provider: 'xnnpack', // XNNPACK
+});
+```
+
+## Streaming Support
+
+<Note>
+  **Streaming**: ✅ Yes
+  
+  Matcha models support streaming generation. Use `generateSpeechStream()` for incremental audio generation and low-latency playback.
+</Note>
+
+## Advantages
+
+1. **Excellent Quality**: Very natural-sounding speech
+2. **Natural Prosody**: Good intonation and rhythm
+3. **Streaming**: Supports incremental generation
+4. **Acoustic Model + Vocoder**: Flexible two-stage architecture
+5. **Multi-Speaker**: Some models support multiple speakers
+
+## Limitations
+
+1. **Slower than VITS**: Two-stage architecture is slightly slower
+2. **Larger Size**: Requires both acoustic model and vocoder
+3. **No Voice Cloning**: Cannot synthesize custom voices
+4. **Limited Languages**: Primarily English-focused
+
+## Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Audiobook Narration" icon="book">
+    Professional-quality long-form narration
+  </Card>
+  <Card title="Content Production" icon="video">
+    Voiceovers for videos and media
+  </Card>
+  <Card title="E-Learning" icon="graduation-cap">
+    High-quality educational content
+  </Card>
+  <Card title="Podcasts" icon="microphone">
+    Natural-sounding podcast narration
+  </Card>
+</CardGroup>
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="Model not loading">
+    - Verify both `acoustic_model.onnx` and `vocoder.onnx` are present
+    - Check that `tokens.txt` exists
+    - Ensure sufficient device memory for both models
+  </Accordion>
+  
+  <Accordion title="Slow generation">
+    - Increase `numThreads` on multi-core devices
+    - Use hardware acceleration (`provider: 'nnapi'`)
+    - Consider using VITS for faster generation
+    - Ensure no other heavy apps are running
+  </Accordion>
+  
+  <Accordion title="Audio quality issues">
+    - Adjust `noiseScale` for more/less expressiveness
+    - Try different `lengthScale` values
+    - Ensure correct sample rate for playback
+    - Check that vocoder output is not being resampled incorrectly
+  </Accordion>
+</AccordionGroup>
+
+## Comparison with Other Models
+
+| Feature | Matcha | VITS | Zipvoice | Kokoro |
+|---------|--------|------|----------|--------|
+| **Quality** | Very High | High | Very High | High |
+| **Speed** | Fast | Very Fast | Medium | Fast |
+| **Streaming** | Yes | Yes | No | Yes |
+| **Voice Cloning** | No | No | Yes | No |
+| **Model Size** | Medium | Small | Large | Small |
+| **Architecture** | Acoustic + Vocoder | End-to-End | Encoder + Decoder + Vocoder | End-to-End |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="TTS API" icon="code" href="/api/tts">
+    Detailed API documentation
+  </Card>
+  <Card title="Streaming TTS" icon="waveform" href="/api/streaming-tts">
+    Low-latency streaming guide
+  </Card>
+  <Card title="Model Setup" icon="download" href="/model-setup">
+    How to download and bundle models
+  </Card>
+  <Card title="Execution Providers" icon="microchip" href="/execution-providers">
+    Hardware acceleration options
+  </Card>
+</CardGroup>

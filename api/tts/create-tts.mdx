@@ -1,0 +1,353 @@
+---
+title: createTTS()
+description: Create a batch text-to-speech engine for one-shot synthesis
+---
+
+Create a TTS engine instance for batch (one-shot) speech synthesis. This is ideal for generating complete audio from text in a single operation.
+
+For streaming synthesis with incremental chunks, use [createStreamingTTS()](/api/tts/streaming-tts) instead.
+
+```typescript
+function createTTS(
+  options: TTSInitializeOptions | ModelPathConfig
+): Promise<TtsEngine>
+```
+
+## Parameters
+
+<ParamField path="options" type="TTSInitializeOptions | ModelPathConfig" required>
+  Initialization options or a model path configuration.
+  
+  <Expandable title="TTSInitializeOptions properties">
+    <ParamField path="modelPath" type="ModelPathConfig" required>
+      Model directory path configuration.
+    </ParamField>
+    
+    <ParamField path="modelType" type="TTSModelType" default="auto">
+      Model type. Options: `'vits'`, `'matcha'`, `'kokoro'`, `'kitten'`, `'pocket'`, `'zipvoice'`, or `'auto'` for automatic detection.
+    </ParamField>
+    
+    <ParamField path="provider" type="string" optional>
+      Execution provider (e.g., `'cpu'`, `'coreml'`, `'xnnpack'`, `'nnapi'`, `'qnn'`).
+    </ParamField>
+    
+    <ParamField path="numThreads" type="number" default={2}>
+      Number of threads for inference.
+    </ParamField>
+    
+    <ParamField path="debug" type="boolean" default={false}>
+      Enable debug logging.
+    </ParamField>
+    
+    <ParamField path="modelOptions" type="TtsModelOptions" optional>
+      Model-specific options (vits, matcha, kokoro, kitten, pocket). Only options for the loaded model type are applied.
+    </ParamField>
+    
+    <ParamField path="ruleFsts" type="string" optional>
+      Path(s) to rule FSTs for text normalization / ITN.
+    </ParamField>
+    
+    <ParamField path="ruleFars" type="string" optional>
+      Path(s) to rule FARs for text normalization / ITN.
+    </ParamField>
+    
+    <ParamField path="maxNumSentences" type="number" default={1}>
+      Max number of sentences per streaming callback.
+    </ParamField>
+    
+    <ParamField path="silenceScale" type="number" default={0.2}>
+      Silence scale on config level.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Returns
+
+<ResponseField name="Promise<TtsEngine>" type="TtsEngine">
+  A promise that resolves to a TTS engine instance.
+  
+  <Expandable title="TtsEngine interface">
+    <ResponseField name="instanceId" type="string">
+      Unique instance identifier.
+    </ResponseField>
+    
+    <ResponseField name="generateSpeech" type="(text: string, options?: TtsGenerationOptions) => Promise<GeneratedAudio>">
+      Generate speech audio from text.
+    </ResponseField>
+    
+    <ResponseField name="generateSpeechWithTimestamps" type="(text: string, options?: TtsGenerationOptions) => Promise<GeneratedAudioWithTimestamps>">
+      Generate speech with word/phoneme timestamps.
+    </ResponseField>
+    
+    <ResponseField name="updateParams" type="(options: TtsUpdateOptions) => Promise<{ success: boolean; detectedModels: Array<{ type: string; modelDir: string }> }>">
+      Update runtime parameters (noise scale, length scale).
+    </ResponseField>
+    
+    <ResponseField name="getModelInfo" type="() => Promise<TTSModelInfo>">
+      Get model sample rate and number of speakers.
+    </ResponseField>
+    
+    <ResponseField name="getSampleRate" type="() => Promise<number>">
+      Get model sample rate.
+    </ResponseField>
+    
+    <ResponseField name="getNumSpeakers" type="() => Promise<number>">
+      Get number of speakers/voices.
+    </ResponseField>
+    
+    <ResponseField name="destroy" type="() => Promise<void>">
+      Release native resources. Must be called when done.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Examples
+
+### Basic Usage
+
+```typescript
+import { createTTS, assetModelPath } from 'react-native-sherpa-onnx/tts';
+
+const tts = await createTTS({
+  modelPath: assetModelPath('models/vits-piper-en_US-lessac-medium'),
+});
+
+const audio = await tts.generateSpeech('Hello, world!');
+console.log('Generated samples:', audio.samples.length);
+console.log('Sample rate:', audio.sampleRate);
+
+await tts.destroy();
+```
+
+### With Model Type and Options
+
+```typescript
+import { createTTS, assetModelPath } from 'react-native-sherpa-onnx/tts';
+
+const tts = await createTTS({
+  modelPath: assetModelPath('models/vits-piper-en'),
+  modelType: 'vits',
+  modelOptions: {
+    vits: {
+      noiseScale: 0.667,
+      noiseScaleW: 0.8,
+      lengthScale: 1.0,
+    },
+  },
+  numThreads: 4,
+});
+
+const audio = await tts.generateSpeech('Welcome to React Native Sherpa ONNX!');
+await tts.destroy();
+```
+
+### Multi-Speaker Model
+
+```typescript
+import { createTTS, assetModelPath } from 'react-native-sherpa-onnx/tts';
+
+const tts = await createTTS({
+  modelPath: assetModelPath('models/vits-model-multi-speaker'),
+});
+
+const modelInfo = await tts.getModelInfo();
+console.log('Number of speakers:', modelInfo.numSpeakers);
+
+// Generate with different speakers
+const audio1 = await tts.generateSpeech('Hello', { sid: 0 });
+const audio2 = await tts.generateSpeech('Hello', { sid: 1 });
+const audio3 = await tts.generateSpeech('Hello', { sid: 2 });
+
+await tts.destroy();
+```
+
+### With Speed Control
+
+```typescript
+import { createTTS, assetModelPath } from 'react-native-sherpa-onnx/tts';
+
+const tts = await createTTS({
+  modelPath: assetModelPath('models/vits-piper-en'),
+});
+
+// Generate at different speeds
+const normalSpeed = await tts.generateSpeech('Hello world', { speed: 1.0 });
+const slower = await tts.generateSpeech('Hello world', { speed: 0.75 });
+const faster = await tts.generateSpeech('Hello world', { speed: 1.5 });
+
+await tts.destroy();
+```
+
+### With Timestamps
+
+```typescript
+import { createTTS, assetModelPath } from 'react-native-sherpa-onnx/tts';
+
+const tts = await createTTS({
+  modelPath: assetModelPath('models/vits-piper-en'),
+});
+
+const result = await tts.generateSpeechWithTimestamps(
+  'The quick brown fox jumps over the lazy dog.'
+);
+
+console.log('Audio samples:', result.samples.length);
+console.log('Subtitles:', result.subtitles);
+// [
+//   { text: 'The', start: 0.0, end: 0.2 },
+//   { text: 'quick', start: 0.2, end: 0.5 },
+//   ...
+// ]
+
+await tts.destroy();
+```
+
+### Voice Cloning with Pocket TTS
+
+```typescript
+import { createTTS, fileModelPath } from 'react-native-sherpa-onnx/tts';
+import { readFile } from '@dr.pogodin/react-native-fs';
+
+const tts = await createTTS({
+  modelPath: fileModelPath('/path/to/pocket-tts-model'),
+  modelType: 'pocket',
+});
+
+// Load reference audio (PCM float samples)
+const referenceAudio = await loadAudioSamples('reference.wav');
+
+const audio = await tts.generateSpeech(
+  'This will sound like the reference voice.',
+  {
+    referenceAudio: {
+      samples: referenceAudio.samples,
+      sampleRate: referenceAudio.sampleRate,
+    },
+    referenceText: 'The transcript of the reference audio.',
+    numSteps: 10,
+  }
+);
+
+await tts.destroy();
+```
+
+### Save to File
+
+```typescript
+import { createTTS, assetModelPath, saveAudioToFile } from 'react-native-sherpa-onnx/tts';
+import { DocumentDirectoryPath } from '@dr.pogodin/react-native-fs';
+
+const tts = await createTTS({
+  modelPath: assetModelPath('models/vits-piper-en'),
+});
+
+const audio = await tts.generateSpeech('Save this to a file.');
+
+const outputPath = `${DocumentDirectoryPath}/output.wav`;
+await saveAudioToFile(audio, outputPath);
+console.log('Saved to:', outputPath);
+
+await tts.destroy();
+```
+
+### Update Parameters at Runtime
+
+```typescript
+import { createTTS, assetModelPath } from 'react-native-sherpa-onnx/tts';
+
+const tts = await createTTS({
+  modelPath: assetModelPath('models/vits-piper-en'),
+  modelType: 'vits',
+  modelOptions: {
+    vits: { noiseScale: 0.667 },
+  },
+});
+
+const audio1 = await tts.generateSpeech('First generation.');
+
+// Update parameters
+await tts.updateParams({
+  modelType: 'vits',
+  modelOptions: {
+    vits: {
+      noiseScale: 0.9,
+      lengthScale: 1.2,
+    },
+  },
+});
+
+const audio2 = await tts.generateSpeech('Second generation with new params.');
+
+await tts.destroy();
+```
+
+## Related Functions
+
+### detectTtsModel()
+
+Detect TTS model type without initializing the engine.
+
+```typescript
+function detectTtsModel(
+  modelPath: ModelPathConfig,
+  options?: { modelType?: TTSModelType }
+): Promise<{
+  success: boolean;
+  detectedModels: Array<{ type: string; modelDir: string }>;
+  modelType?: string;
+}>
+```
+
+#### Example
+
+```typescript
+import { detectTtsModel, assetModelPath } from 'react-native-sherpa-onnx/tts';
+
+const result = await detectTtsModel(
+  assetModelPath('models/vits-piper-en')
+);
+
+if (result.success) {
+  console.log('Detected type:', result.modelType);
+}
+```
+
+### saveAudioToFile()
+
+Save generated audio to a WAV file.
+
+```typescript
+function saveAudioToFile(
+  audio: GeneratedAudio,
+  filePath: string
+): Promise<string>
+```
+
+### saveAudioToContentUri()
+
+**Android only:** Save audio via Storage Access Framework.
+
+```typescript
+function saveAudioToContentUri(
+  audio: GeneratedAudio,
+  directoryUri: string,
+  filename: string
+): Promise<string>
+```
+
+### shareAudioFile()
+
+Share a TTS audio file.
+
+```typescript
+function shareAudioFile(
+  fileUri: string,
+  mimeType?: string
+): Promise<void>
+```
+
+## See Also
+
+- [createStreamingTTS()](/api/tts/streaming-tts) - For streaming synthesis
+- [TTS Types](/api/tts/types) - Complete type definitions
+- [Model Path Utilities](/api/model-path) - Working with model paths

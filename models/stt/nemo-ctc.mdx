@@ -1,0 +1,280 @@
+---
+title: NeMo CTC Models
+description: NVIDIA NeMo CTC models for English streaming and offline recognition
+---
+
+# NeMo CTC Models
+
+NeMo CTC models are developed by NVIDIA and provide excellent performance for **English speech recognition**. They use Connectionist Temporal Classification (CTC) for fast, streaming-capable recognition.
+
+## Model Architecture
+
+NeMo CTC models use a simple, efficient architecture:
+- **Model** (`model.onnx` or `model.int8.onnx`) – Single neural network
+- **Tokens** (`tokens.txt`) – Token vocabulary
+
+CTC models are faster than encoder-decoder models because they don't require autoregressive decoding.
+
+## When to Use
+
+<CardGroup cols={2}>
+  <Card title="English Streaming" icon="microphone">
+    Real-time English transcription with low latency
+  </Card>
+  <Card title="Live Captions" icon="closed-captioning">
+    English subtitles for videos or meetings
+  </Card>
+  <Card title="Fast Recognition" icon="bolt">
+    Quick batch transcription of English audio
+  </Card>
+  <Card title="Voice Assistants" icon="robot">
+    English voice interfaces and commands
+  </Card>
+</CardGroup>
+
+## Supported Languages
+
+NeMo CTC models are primarily designed for:
+- **English** (US, UK, and other variants)
+- Some multilingual variants available (check download page)
+
+For other languages, consider Whisper, Paraformer (Chinese), or multilingual transducer models.
+
+## Performance Characteristics
+
+| Aspect | Rating | Notes |
+|--------|--------|-------|
+| **Streaming** | ✅ Excellent | Native streaming support with low latency |
+| **Accuracy** | ⭐⭐⭐⭐⭐ | Very high accuracy for English |
+| **Speed** | ⭐⭐⭐⭐⭐ | Fast CTC decoding |
+| **Memory** | ⭐⭐⭐⭐⭐ | Low memory footprint |
+| **Model Size** | Small-Medium | Typically 50-150 MB |
+
+## Download Links
+
+<Card title="NeMo CTC Models" icon="download" href="https://k2-fsa.github.io/sherpa/onnx/pretrained_models/offline-ctc/nemo/index.html">
+  Browse and download pretrained NeMo CTC models
+</Card>
+
+## Configuration Example
+
+### Offline Transcription
+
+```typescript
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+
+const stt = await createSTT({
+  modelPath: {
+    type: 'asset',
+    path: 'models/sherpa-onnx-nemo-ctc-en-citrinet-512'
+  },
+  modelType: 'nemo_ctc', // or 'auto'
+  preferInt8: true,
+  numThreads: 2,
+});
+
+const result = await stt.transcribeFile('/path/to/audio.wav');
+console.log('Transcription:', result.text);
+
+await stt.destroy();
+```
+
+### Streaming Recognition
+
+```typescript
+import { createStreamingSTT } from 'react-native-sherpa-onnx/stt';
+
+const engine = await createStreamingSTT({
+  modelPath: {
+    type: 'asset',
+    path: 'models/sherpa-onnx-streaming-nemo-ctc-en'
+  },
+  modelType: 'nemo_ctc',
+  enableEndpoint: true,
+  numThreads: 2,
+});
+
+const stream = await engine.createStream();
+
+// Feed audio chunks
+const samples = getPcmSamplesFromMic(); // float[] in [-1, 1]
+const { result, isEndpoint } = await stream.processAudioChunk(samples, 16000);
+
+console.log('Partial result:', result.text);
+if (isEndpoint) {
+  console.log('Utterance ended');
+}
+
+await stream.release();
+await engine.destroy();
+```
+
+### With Hardware Acceleration
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/nemo-ctc-en' },
+  modelType: 'nemo_ctc',
+  provider: 'nnapi', // Android NNAPI
+  numThreads: 4,
+});
+```
+
+## Model Detection
+
+NeMo CTC models are detected by:
+- Folder name containing `nemo` or `parakeet`
+- Presence of `model.onnx` (or `model.int8.onnx`) and `tokens.txt`
+
+Expected files:
+- `model.onnx` (or `model.int8.onnx`)
+- `tokens.txt`
+
+## Performance Tips
+
+### Use Quantized Models
+
+Int8 quantization provides excellent speedup:
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/nemo-ctc-en' },
+  preferInt8: true, // Use model.int8.onnx if available
+});
+```
+
+### Optimize for Real-Time
+
+For streaming applications:
+
+```typescript
+const engine = await createStreamingSTT({
+  modelPath: { type: 'asset', path: 'models/nemo-ctc-en' },
+  modelType: 'nemo_ctc',
+  numThreads: 4,          // More threads for lower latency
+  enableEndpoint: true,   // Detect utterance boundaries
+  endpointConfig: {
+    rule2: {
+      mustContainNonSilence: true,
+      minTrailingSilence: 0.8, // 800ms of silence = end
+      minUtteranceLength: 0,
+    }
+  },
+});
+```
+
+### Hardware Acceleration
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/nemo-ctc-en' },
+  provider: 'nnapi', // Android Neural Networks API
+  // provider: 'qnn',    // Qualcomm QNN for Snapdragon devices
+});
+```
+
+## Streaming Support
+
+<Note>
+  **Streaming**: ✅ Yes
+  
+  NeMo CTC models have excellent streaming support. Use `createStreamingSTT()` for real-time recognition with low latency.
+</Note>
+
+## Advantages
+
+1. **Fast**: CTC decoding is very fast
+2. **Low Latency**: Excellent for real-time applications
+3. **Streaming**: Native streaming support
+4. **High Accuracy**: NVIDIA-trained models with excellent English accuracy
+5. **Low Memory**: Efficient single-model architecture
+6. **Mobile-Friendly**: Small models suitable for mobile deployment
+
+## Limitations
+
+1. **English-Focused**: Primarily designed for English (limited multilingual support)
+2. **No Hotwords**: Does not support contextual biasing (use transducer models for hotwords)
+3. **Domain-Specific**: Best for general English (specialized domains may need fine-tuning)
+
+## Parakeet Models
+
+NeMo Parakeet is a family of streaming ASR models:
+- Detected with `parakeet` in folder name
+- Same `nemo_ctc` model type
+- Optimized for low latency
+
+```typescript
+const engine = await createStreamingSTT({
+  modelPath: { type: 'asset', path: 'models/parakeet-rnnt-en' },
+  modelType: 'nemo_ctc', // Parakeet uses same type
+});
+```
+
+## Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Voice Commands" icon="microphone">
+    English voice control for apps and IoT devices
+  </Card>
+  <Card title="Live Captions" icon="closed-captioning">
+    Real-time English subtitles for videos
+  </Card>
+  <Card title="Call Transcription" icon="phone">
+    Transcribing English phone calls and meetings
+  </Card>
+  <Card title="Voice Assistants" icon="robot">
+    English voice interfaces with fast response
+  </Card>
+</CardGroup>
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="Model not loading">
+    - Verify folder name contains `nemo` or `parakeet`
+    - Check that `model.onnx` and `tokens.txt` are present
+    - Ensure sufficient device memory
+  </Accordion>
+  
+  <Accordion title="Poor accuracy on non-English audio">
+    - NeMo CTC models are optimized for English
+    - Use Whisper or Paraformer for other languages
+    - Check if a multilingual variant is available
+  </Accordion>
+  
+  <Accordion title="High latency in streaming">
+    - Increase `numThreads` on multi-core devices
+    - Use `preferInt8: true` for quantized models
+    - Enable hardware acceleration with `provider`
+    - Adjust endpoint config for faster utterance detection
+  </Accordion>
+</AccordionGroup>
+
+## Comparison with Other Models
+
+| Feature | NeMo CTC | Transducer | Whisper |
+|---------|----------|------------|----------|
+| **Speed** | Very Fast | Fast | Medium |
+| **English Accuracy** | Excellent | Excellent | Very Good |
+| **Streaming** | Yes | Yes | No |
+| **Hotwords** | No | Yes | No |
+| **Multilingual** | Limited | Varies | Excellent |
+| **Model Size** | Small | Medium | Large |
+| **Latency** | Very Low | Low | N/A (offline) |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Streaming STT" icon="waveform" href="/api/streaming-stt">
+    Learn about real-time recognition
+  </Card>
+  <Card title="STT API" icon="code" href="/api/stt">
+    Detailed API documentation
+  </Card>
+  <Card title="Model Setup" icon="download" href="/model-setup">
+    How to download and bundle models
+  </Card>
+  <Card title="Execution Providers" icon="microchip" href="/execution-providers">
+    Hardware acceleration options
+  </Card>
+</CardGroup>

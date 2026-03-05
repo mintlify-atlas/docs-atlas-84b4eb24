@@ -1,0 +1,374 @@
+---
+title: STT Types
+description: TypeScript types and interfaces for speech-to-text
+---
+
+Complete type definitions for the STT (speech-to-text) API.
+
+## Model Types
+
+### STTModelType
+
+Supported STT model types for offline recognition.
+
+```typescript
+type STTModelType =
+  | 'transducer'
+  | 'nemo_transducer'
+  | 'paraformer'
+  | 'nemo_ctc'
+  | 'wenet_ctc'
+  | 'sense_voice'
+  | 'zipformer_ctc'
+  | 'ctc'
+  | 'whisper'
+  | 'funasr_nano'
+  | 'fire_red_asr'
+  | 'moonshine'
+  | 'dolphin'
+  | 'canary'
+  | 'omnilingual'
+  | 'medasr'
+  | 'telespeech_ctc'
+  | 'auto';
+```
+
+### OnlineSTTModelType
+
+Supported model types for streaming (online) recognition.
+
+```typescript
+type OnlineSTTModelType =
+  | 'transducer'
+  | 'paraformer'
+  | 'zipformer2_ctc'
+  | 'nemo_ctc'
+  | 'tone_ctc';
+```
+
+## Interfaces
+
+### SttEngine
+
+Offline STT engine instance returned by `createSTT()`.
+
+```typescript
+interface SttEngine {
+  readonly instanceId: string;
+  
+  transcribeFile(filePath: string): Promise<SttRecognitionResult>;
+  
+  transcribeSamples(
+    samples: number[],
+    sampleRate: number
+  ): Promise<SttRecognitionResult>;
+  
+  setConfig(config: SttRuntimeConfig): Promise<void>;
+  
+  destroy(): Promise<void>;
+}
+```
+
+### StreamingSttEngine
+
+Streaming STT engine instance returned by `createStreamingSTT()`.
+
+```typescript
+interface StreamingSttEngine {
+  readonly instanceId: string;
+  
+  createStream(hotwords?: string): Promise<SttStream>;
+  
+  destroy(): Promise<void>;
+}
+```
+
+### SttStream
+
+Streaming recognition stream.
+
+```typescript
+interface SttStream {
+  readonly streamId: string;
+  
+  acceptWaveform(samples: number[], sampleRate: number): Promise<void>;
+  inputFinished(): Promise<void>;
+  decode(): Promise<void>;
+  isReady(): Promise<boolean>;
+  getResult(): Promise<StreamingSttResult>;
+  isEndpoint(): Promise<boolean>;
+  reset(): Promise<void>;
+  release(): Promise<void>;
+  
+  processAudioChunk(
+    samples: number[] | Float32Array,
+    sampleRate: number
+  ): Promise<{ result: StreamingSttResult; isEndpoint: boolean }>;
+}
+```
+
+### SttRecognitionResult
+
+Full recognition result from offline STT.
+
+```typescript
+interface SttRecognitionResult {
+  /** Transcribed text */
+  text: string;
+  
+  /** Token strings */
+  tokens: string[];
+  
+  /** Timestamps per token (model-dependent) */
+  timestamps: number[];
+  
+  /** Detected or specified language (model-dependent) */
+  lang: string;
+  
+  /** Emotion label (e.g., SenseVoice) */
+  emotion: string;
+  
+  /** Event label (model-dependent) */
+  event: string;
+  
+  /** Durations (valid for TDT models) */
+  durations: number[];
+}
+```
+
+### StreamingSttResult
+
+Partial or final result from streaming STT.
+
+```typescript
+interface StreamingSttResult {
+  text: string;
+  tokens: string[];
+  timestamps: number[];
+}
+```
+
+### SttRuntimeConfig
+
+Runtime configuration for offline recognizer.
+
+```typescript
+interface SttRuntimeConfig {
+  /** Decoding method (e.g., "greedy_search") */
+  decodingMethod?: string;
+  
+  /** Max active paths (beam search) */
+  maxActivePaths?: number;
+  
+  /** Path to hotwords file */
+  hotwordsFile?: string;
+  
+  /** Hotwords score */
+  hotwordsScore?: number;
+  
+  /** Blank penalty */
+  blankPenalty?: number;
+  
+  /** Path to rule FSTs */
+  ruleFsts?: string;
+  
+  /** Path to rule FARs */
+  ruleFars?: string;
+}
+```
+
+## Model-Specific Options
+
+### SttModelOptions
+
+Model-specific options. Only the block for the loaded model type is applied.
+
+```typescript
+interface SttModelOptions {
+  whisper?: SttWhisperModelOptions;
+  senseVoice?: SttSenseVoiceModelOptions;
+  canary?: SttCanaryModelOptions;
+  funasrNano?: SttFunAsrNanoModelOptions;
+}
+```
+
+### SttWhisperModelOptions
+
+Options for Whisper models.
+
+```typescript
+interface SttWhisperModelOptions {
+  /** Language code (e.g., "en", "de"). Default: "en" */
+  language?: string;
+  
+  /** "transcribe" or "translate". Default: "transcribe" */
+  task?: 'transcribe' | 'translate';
+  
+  /** Padding at end of samples. Default: 1000 */
+  tailPaddings?: number;
+  
+  /** Enable token-level timestamps (Android only) */
+  enableTokenTimestamps?: boolean;
+  
+  /** Enable segment-level timestamps (Android only) */
+  enableSegmentTimestamps?: boolean;
+}
+```
+
+### SttSenseVoiceModelOptions
+
+Options for SenseVoice models.
+
+```typescript
+interface SttSenseVoiceModelOptions {
+  /** Language hint */
+  language?: string;
+  
+  /** Inverse text normalization. Default: true (Kotlin), false (C++) */
+  useItn?: boolean;
+}
+```
+
+### SttCanaryModelOptions
+
+Options for Canary models.
+
+```typescript
+interface SttCanaryModelOptions {
+  /** Source language code. Default: "en" */
+  srcLang?: string;
+  
+  /** Target language code. Default: "en" */
+  tgtLang?: string;
+  
+  /** Use punctuation. Default: true */
+  usePnc?: boolean;
+}
+```
+
+### SttFunAsrNanoModelOptions
+
+Options for FunASR Nano models.
+
+```typescript
+interface SttFunAsrNanoModelOptions {
+  /** System prompt. Default: "You are a helpful assistant." */
+  systemPrompt?: string;
+  
+  /** User prompt prefix. Default: "语音转写：" */
+  userPrompt?: string;
+  
+  /** Max new tokens. Default: 512 */
+  maxNewTokens?: number;
+  
+  /** Temperature. Default: 1e-6 */
+  temperature?: number;
+  
+  /** Top-p. Default: 0.8 */
+  topP?: number;
+  
+  /** Random seed. Default: 42 */
+  seed?: number;
+  
+  /** Language hint */
+  language?: string;
+  
+  /** Inverse text normalization. Default: true */
+  itn?: boolean;
+  
+  /** Hotwords string */
+  hotwords?: string;
+}
+```
+
+## Endpoint Detection
+
+### EndpointConfig
+
+Endpoint detection configuration for streaming STT.
+
+```typescript
+interface EndpointConfig {
+  /** Rule 1: e.g., 2.4s trailing silence, no speech required */
+  rule1?: EndpointRule;
+  
+  /** Rule 2: e.g., 1.4s trailing silence, speech required */
+  rule2?: EndpointRule;
+  
+  /** Rule 3: e.g., max utterance length 20s */
+  rule3?: EndpointRule;
+}
+```
+
+### EndpointRule
+
+Single endpoint rule.
+
+```typescript
+interface EndpointRule {
+  /** If true, rule only matches when segment contains non-silence */
+  mustContainNonSilence: boolean;
+  
+  /** Minimum trailing silence in seconds */
+  minTrailingSilence: number;
+  
+  /** Minimum utterance length in seconds */
+  minUtteranceLength: number;
+}
+```
+
+## Constants
+
+### STT_MODEL_TYPES
+
+Runtime list of supported offline STT model types.
+
+```typescript
+const STT_MODEL_TYPES: readonly STTModelType[];
+```
+
+### ONLINE_STT_MODEL_TYPES
+
+Runtime list of supported streaming STT model types.
+
+```typescript
+const ONLINE_STT_MODEL_TYPES: readonly OnlineSTTModelType[];
+```
+
+### STT_HOTWORDS_MODEL_TYPES
+
+Model types that support hotwords (contextual biasing).
+
+```typescript
+const STT_HOTWORDS_MODEL_TYPES: readonly STTModelType[] = [
+  'transducer',
+  'nemo_transducer',
+];
+```
+
+## Utility Functions
+
+### sttSupportsHotwords()
+
+Check if a model type supports hotwords.
+
+```typescript
+function sttSupportsHotwords(modelType: STTModelType | string): boolean
+```
+
+#### Example
+
+```typescript
+import { sttSupportsHotwords } from 'react-native-sherpa-onnx/stt';
+
+if (sttSupportsHotwords('transducer')) {
+  console.log('Hotwords supported');
+  // Show hotwords UI options
+}
+```
+
+## See Also
+
+- [createSTT()](/api/stt/create-stt) - Create offline STT engine
+- [createStreamingSTT()](/api/stt/streaming-stt) - Create streaming STT engine
+- [Model Path Types](/api/model-path#types) - ModelPathConfig types

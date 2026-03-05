@@ -1,0 +1,509 @@
+---
+title: 'Hotwords (Contextual Biasing)'
+description: 'Configure hotword/keyword spotting for improved recognition accuracy'
+icon: 'bullseye'
+---
+
+## Overview
+
+**Hotwords** (also called contextual biasing or keyword spotting) allow you to boost recognition accuracy for specific words or phrases. This is particularly useful for domain-specific vocabulary, proper nouns, technical terms, or commands that the base model might not recognize well.
+
+<Warning>
+  Hotwords are **only supported** by `transducer` and `nemo_transducer` model types. All other model types (Whisper, Paraformer, Sense Voice, etc.) do not support hotwords.
+</Warning>
+
+<Info>
+  Import from: `react-native-sherpa-onnx/stt`
+</Info>
+
+---
+
+## Model Support
+
+Only specific STT model types support hotwords:
+
+<CardGroup cols={2}>
+  <Card title="Supported Models" icon="check" color="#10b981">
+    - `transducer`
+    - `nemo_transducer`
+  </Card>
+  
+  <Card title="Unsupported Models" icon="xmark" color="#ef4444">
+    - `whisper`
+    - `paraformer`
+    - `sensevoice`
+    - `nemo_ctc`
+    - All other types
+  </Card>
+</CardGroup>
+
+### Checking Model Support
+
+Use `sttSupportsHotwords()` to check if a model type supports hotwords:
+
+```typescript
+import { sttSupportsHotwords } from 'react-native-sherpa-onnx/stt';
+
+const modelType = 'transducer';
+if (sttSupportsHotwords(modelType)) {
+  console.log('This model supports hotwords');
+  // Show hotwords configuration UI
+} else {
+  console.log('This model does not support hotwords');
+  // Hide hotwords configuration UI
+}
+```
+
+<ResponseField name="supported" type="boolean">
+  Returns `true` only for `'transducer'` and `'nemo_transducer'`
+</ResponseField>
+
+---
+
+## Error Codes
+
+The SDK validates hotword configuration and rejects with specific error codes:
+
+| Error Code | When |
+|------------|------|
+| `HOTWORDS_NOT_SUPPORTED` | `initializeSTT` or `setSttConfig` is called with a non-empty `hotwordsFile` and the model type does not support hotwords |
+| `INVALID_HOTWORDS_FILE` | The hotwords file is missing, not readable, invalid UTF-8, contains null bytes, has no valid lines, has invalid score syntax, or contains lines with no letter characters |
+
+---
+
+## Hotword File Format
+
+Hotword files must follow this format:
+
+<Steps>
+  <Step title="UTF-8 text file">
+    The file must be valid UTF-8 text with no null bytes
+  </Step>
+  
+  <Step title="One word/phrase per line">
+    Each non-empty line contains a single word or phrase to boost
+    
+    ```text
+    SPEECH RECOGNITION
+    sherpa onnx
+    react native
+    ```
+  </Step>
+  
+  <Step title="Optional score per line">
+    Add a space, colon, and numeric score to adjust boost strength
+    
+    ```text
+    OpenAI :2.0
+    GPT-4 :1.5
+    machine learning :1.2
+    ```
+    
+    Higher scores = stronger boosting (default: 1.0 if not specified)
+  </Step>
+  
+  <Step title="Must contain letter characters">
+    Each line must have at least one letter character. Lines with only digits, punctuation, or symbols are rejected.
+    
+    ```text
+    ❌ 12345          // Invalid: no letters
+    ❌ 00:01:23       // Invalid: SRT timestamp
+    ✅ GPT-4          // Valid: contains letters
+    ✅ 2024年         // Valid: contains letters
+    ```
+  </Step>
+</Steps>
+
+### Example Hotwords File
+
+```text title="hotwords.txt"
+# Domain-specific terms (no score = default 1.0)
+react native
+sherpa onnx
+transducer model
+
+# Proper nouns with higher scores
+OpenAI :2.0
+GPT-4 :1.8
+TensorFlow :1.5
+
+# Technical commands
+start recording
+stop recording
+transcribe file :1.3
+```
+
+---
+
+## Configuration
+
+### Initialize with Hotwords
+
+Provide the hotwords file path during STT initialization:
+
+```typescript
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+import RNFS from 'react-native-fs';
+
+// Create hotwords file
+const hotwordsPath = `${RNFS.DocumentDirectoryPath}/hotwords.txt`;
+const hotwordsContent = `
+react native :2.0
+sherpa onnx :1.8
+transducer :1.5
+`;
+await RNFS.writeFile(hotwordsPath, hotwordsContent, 'utf8');
+
+// Initialize STT with hotwords
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/transducer-en' },
+  modelType: 'transducer',
+  hotwordsFile: hotwordsPath,
+  hotwordsScore: 1.5, // Global score multiplier (optional)
+});
+```
+
+<ParamField path="hotwordsFile" type="string" optional>
+  Path to the hotwords text file (must be readable and valid)
+</ParamField>
+
+<ParamField path="hotwordsScore" type="number" optional>
+  Global score multiplier applied to all hotwords (default: 1.5)
+</ParamField>
+
+---
+
+### Update Hotwords at Runtime
+
+You can change hotwords dynamically using `setConfig()`:
+
+```typescript
+import RNFS from 'react-native-fs';
+
+// Create new hotwords file
+const newHotwordsPath = `${RNFS.DocumentDirectoryPath}/hotwords-commands.txt`;
+await RNFS.writeFile(newHotwordsPath, `
+start recording :2.0
+stop recording :2.0
+pause recording :1.8
+`, 'utf8');
+
+// Update at runtime
+await stt.setConfig({
+  hotwordsFile: newHotwordsPath,
+  hotwordsScore: 2.0,
+});
+
+console.log('Hotwords updated for command recognition');
+```
+
+<Tip>
+  You can create multiple hotword files for different contexts (e.g., one for technical terms, one for commands) and switch between them at runtime.
+</Tip>
+
+---
+
+## Automatic Decoding Method Switch
+
+When you provide a non-empty hotwords file, the SDK **automatically switches** to `modified_beam_search` decoding method, because sherpa-onnx only applies hotwords with this method.
+
+<Note>
+  You don't need to manually set `decodingMethod: 'modified_beam_search'`. The SDK handles this automatically.
+</Note>
+
+The SDK also ensures `maxActivePaths` is at least 4 for proper beam search operation:
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/transducer-en' },
+  modelType: 'transducer',
+  hotwordsFile: hotwordsPath,
+  // decodingMethod is automatically set to 'modified_beam_search'
+  // maxActivePaths is automatically set to at least 4
+});
+
+// The init result includes the applied decoding method:
+const result = await SherpaOnnx.initializeStt(...);
+console.log('Applied decoding method:', result.decodingMethod);
+// Output: "modified_beam_search"
+```
+
+---
+
+## Modeling Unit and BPE Vocab
+
+For proper hotword tokenization, you may need to specify the **modeling unit** and (optionally) the **BPE vocabulary** file.
+
+<Info>
+  These parameters are **only relevant when using hotwords**. They tell the tokenizer how to process hotword text to match the model's training.
+</Info>
+
+### modelingUnit
+
+The modeling unit must match how your model was trained:
+
+<ParamField path="modelingUnit" type="'cjkchar' | 'bpe' | 'cjkchar+bpe'" optional>
+  Tokenization method for hotwords
+</ParamField>
+
+| Value | Description | Typical Models |
+|-------|-------------|----------------|
+| `'bpe'` | Byte-pair encoding | English transducers (zipformer-en, LibriSpeech models). Model folder often contains `bpe.vocab` or `bpe.model` |
+| `'cjkchar'` | Chinese character-based | Chinese transducers (conformer-zh, wenetspeech, multi-dataset zh). No BPE; tokens are characters |
+| `'cjkchar+bpe'` | Bilingual (Chinese + English) | Bilingual models (bilingual-zh-en, streaming zipformer bilingual). Model folder often contains `bpe.vocab` |
+
+---
+
+### bpeVocab
+
+<ParamField path="bpeVocab" type="string" optional>
+  Path to the BPE vocabulary file (sentencepiece `bpe.vocab`)
+</ParamField>
+
+**Only needed when:**
+- `modelingUnit` is `'bpe'` or `'cjkchar+bpe'`
+- The model directory doesn't contain an auto-detectable `bpe.vocab` file
+
+<Note>
+  If the model directory contains `bpe.vocab`, it's detected automatically and used when `bpeVocab` is not provided.
+</Note>
+
+---
+
+### Configuration Examples
+
+#### English Transducer with BPE
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/zipformer-en-2023-06-26' },
+  modelType: 'transducer',
+  hotwordsFile: hotwordsPath,
+  modelingUnit: 'bpe',
+  // bpeVocab auto-detected from model directory if present
+});
+```
+
+Hotwords file:
+```text
+SPEECH RECOGNITION :2.0
+OPENAI :1.8
+REACT NATIVE :1.5
+```
+
+#### Chinese Transducer (Character-based)
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/conformer-zh' },
+  modelType: 'transducer',
+  hotwordsFile: hotwordsPath,
+  modelingUnit: 'cjkchar',
+  // No bpeVocab needed for character-based models
+});
+```
+
+Hotwords file:
+```text
+语音识别 :2.0
+人工智能 :1.8
+机器学习 :1.5
+```
+
+#### Bilingual Transducer (Chinese + English)
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/bilingual-zh-en' },
+  modelType: 'transducer',
+  hotwordsFile: hotwordsPath,
+  modelingUnit: 'cjkchar+bpe',
+  bpeVocab: '/path/to/bpe.vocab', // Required if not in model directory
+});
+```
+
+Hotwords file:
+```text
+礼拜二 :2.0
+FOREVER :1.8
+REACT NATIVE :1.5
+人工智能 :1.5
+```
+
+---
+
+## Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Technical Terms" icon="microchip">
+    Boost recognition of domain-specific jargon, API names, or technical vocabulary that the base model might misrecognize.
+    
+    ```text
+    Kubernetes :2.0
+    PostgreSQL :1.8
+    GraphQL :1.5
+    ```
+  </Card>
+  
+  <Card title="Proper Nouns" icon="user">
+    Improve accuracy for company names, product names, or person names.
+    
+    ```text
+    OpenAI :2.0
+    ChatGPT :1.8
+    Microsoft Azure :1.5
+    ```
+  </Card>
+  
+  <Card title="Voice Commands" icon="terminal">
+    Enhance command recognition for voice control interfaces.
+    
+    ```text
+    start recording :2.5
+    stop recording :2.5
+    save transcript :2.0
+    ```
+  </Card>
+  
+  <Card title="Medical Terms" icon="stethoscope">
+    Boost medical vocabulary for healthcare applications.
+    
+    ```text
+    hypertension :2.0
+    acetaminophen :1.8
+    electrocardiogram :1.5
+    ```
+  </Card>
+</CardGroup>
+
+---
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Check Model Support First">
+    Always use `sttSupportsHotwords()` to verify model support before showing hotwords configuration UI.
+    
+    ```typescript
+    if (sttSupportsHotwords(modelType)) {
+      // Show hotwords configuration
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Use Appropriate Scores">
+    - **Default (1.0)**: Good starting point for most words
+    - **High (1.5-2.5)**: Use for critical commands or frequently misrecognized terms
+    - **Very high (2.5+)**: May cause over-recognition or false positives
+    
+    Start conservative and adjust based on testing.
+  </Accordion>
+  
+  <Accordion title="Match Model Training">
+    Always set `modelingUnit` to match how your model was trained:
+    
+    - Check model documentation or README
+    - Look for `bpe.vocab` or `bpe.model` files in the model directory
+    - If unsure, `'bpe'` is most common for English models
+  </Accordion>
+  
+  <Accordion title="Keep Files Small">
+    Large hotword files can impact performance. Aim for:
+    
+    - **50-200 entries**: Optimal range for most use cases
+    - **500+ entries**: May slow down recognition
+    - Consider creating context-specific files instead of one giant file
+  </Accordion>
+  
+  <Accordion title="Validate File Format">
+    Ensure hotwords files:
+    
+    - Are valid UTF-8
+    - Have at least one letter per line
+    - Use correct score syntax (` :1.5`)
+    - Don't contain SRT timestamps or numeric-only lines
+  </Accordion>
+  
+  <Accordion title="Test Different Contexts">
+    Create multiple hotword files for different contexts and switch between them:
+    
+    ```typescript
+    // Technical mode
+    await stt.setConfig({ hotwordsFile: '/path/to/technical.txt' });
+    
+    // Command mode
+    await stt.setConfig({ hotwordsFile: '/path/to/commands.txt' });
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="HOTWORDS_NOT_SUPPORTED error">
+    **Cause**: You're using a model type that doesn't support hotwords (e.g., Whisper, Paraformer).
+    
+    **Solution**:
+    - Use a `transducer` or `nemo_transducer` model instead
+    - Remove the `hotwordsFile` parameter if you must use an unsupported model
+    - Check model type with `sttSupportsHotwords(modelType)` before enabling hotwords
+  </Accordion>
+  
+  <Accordion title="INVALID_HOTWORDS_FILE error">
+    **Cause**: The hotwords file has formatting issues.
+    
+    **Solution**:
+    - Ensure file exists and is readable
+    - Check for invalid UTF-8 or null bytes
+    - Verify each line has at least one letter character
+    - Check score syntax: must be ` :1.5` (space, colon, number)
+    - Remove SRT timestamps or numeric-only lines
+  </Accordion>
+  
+  <Accordion title="Hotwords not improving recognition">
+    **Possible causes**:
+    - Score too low (increase to 1.5-2.0)
+    - Wrong `modelingUnit` for your model
+    - Missing or incorrect `bpeVocab` path
+    - Hotword phrase doesn't match audio pronunciation
+    
+    **Solutions**:
+    - Increase hotword scores gradually
+    - Verify `modelingUnit` matches model training
+    - Check for `bpe.vocab` in model directory
+    - Test with simpler single-word hotwords first
+  </Accordion>
+  
+  <Accordion title="Too many false positives">
+    **Cause**: Hotword scores are too high.
+    
+    **Solution**:
+    - Reduce scores to 1.0-1.5 range
+    - Remove overly generic terms
+    - Use more specific multi-word phrases instead of single words
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Related Functions
+
+```typescript
+import { 
+  sttSupportsHotwords,
+  STT_HOTWORDS_MODEL_TYPES 
+} from 'react-native-sherpa-onnx/stt';
+
+// Check if a model type supports hotwords
+const supported = sttSupportsHotwords('transducer'); // true
+
+// Array of model types that support hotwords
+console.log(STT_HOTWORDS_MODEL_TYPES); 
+// ['transducer', 'nemo_transducer']
+```
+
+<ResponseField name="STT_HOTWORDS_MODEL_TYPES" type="readonly string[]">
+  Constant array containing all model types that support hotwords
+</ResponseField>

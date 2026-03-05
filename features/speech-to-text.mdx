@@ -1,0 +1,469 @@
+---
+title: 'Speech-to-Text'
+description: 'Offline STT for complete audio file transcription with support for multiple model types'
+icon: 'microphone'
+---
+
+## Overview
+
+The offline STT (Speech-to-Text) module provides complete audio file transcription using sherpa-onnx models. Use this when you have complete audio files to transcribe, as opposed to real-time streaming recognition.
+
+**Key features:**
+- Transcribe complete audio files or PCM samples
+- Support for multiple model types (Whisper, Paraformer, Transducer, and more)
+- Automatic model type detection
+- Hotwords support for contextual biasing (transducer models)
+- Token timestamps and language detection (model-dependent)
+- Runtime configuration updates
+
+## Quick Start
+
+```typescript
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+
+// Create an STT engine with auto-detection
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/sherpa-onnx-whisper-tiny-en' },
+  modelType: 'auto',
+  preferInt8: true,
+});
+
+// Transcribe a WAV file
+const result = await stt.transcribeFile('/path/to/audio.wav');
+console.log('Transcription:', result.text);
+
+// Access additional metadata
+console.log('Tokens:', result.tokens);
+console.log('Timestamps:', result.timestamps);
+console.log('Language:', result.lang);
+
+// Clean up when done
+await stt.destroy();
+```
+
+## Supported Model Types
+
+The following model types are supported with automatic detection:
+
+| Model Type | Description | Typical Files |
+|------------|-------------|---------------|
+| `transducer` | Transducer models | encoder.onnx, decoder.onnx, joiner.onnx, tokens.txt |
+| `nemo_transducer` | NeMo Transducer | encoder.onnx, decoder.onnx, joiner.onnx, tokens.txt |
+| `paraformer` | Paraformer models | model.onnx, tokens.txt |
+| `whisper` | OpenAI Whisper | encoder.onnx, decoder.onnx, tokens.txt |
+| `sense_voice` | SenseVoice models | model.onnx, tokens.txt |
+| `nemo_ctc` | NeMo CTC models | model.onnx, tokens.txt |
+| `zipformer_ctc` | Zipformer CTC | model.onnx, tokens.txt |
+| `wenet_ctc` | WeNet CTC | model.onnx, tokens.txt |
+| `funasr_nano` | FunASR Nano | encoder_adaptor, llm, embedding, tokenizer |
+| `fire_red_asr` | FireRed ASR | encoder, decoder |
+| `moonshine` | Moonshine | preprocess.onnx, encode.onnx, decode.onnx, tokens.txt |
+| `dolphin` | Dolphin | model.onnx, tokens.txt |
+| `canary` | Canary | encoder, decoder |
+| `auto` | Auto-detect | Detects based on files present |
+
+<Tip>
+Use `modelType: 'auto'` to automatically detect the model type based on files in the directory. This is the recommended approach.
+</Tip>
+
+## API Reference
+
+### createSTT(options)
+
+Creates an STT engine instance for offline transcription.
+
+```typescript src/stt/index.ts
+export async function createSTT(
+  options: STTInitializeOptions | ModelPathConfig
+): Promise<SttEngine>;
+```
+
+**Options:**
+
+<ParamField path="modelPath" type="ModelPathConfig" required>
+  Model directory path configuration. Can be:
+  - `{ type: 'asset', path: 'models/...' }` for bundled assets
+  - `{ type: 'file', path: '/absolute/path' }` for filesystem
+  - `{ type: 'auto', path: '...' }` to try asset then file
+</ParamField>
+
+<ParamField path="modelType" type="STTModelType" default="auto">
+  Model type to use. Set to `'auto'` for automatic detection based on files.
+</ParamField>
+
+<ParamField path="preferInt8" type="boolean">
+  Prefer int8 quantized models (faster, smaller) when available.
+  - `true`: Prefer int8 models
+  - `false`: Prefer full precision
+  - `undefined`: Try int8 first, fallback to full precision (default)
+</ParamField>
+
+<ParamField path="numThreads" type="number" default="1">
+  Number of threads for inference.
+</ParamField>
+
+<ParamField path="provider" type="string" default="cpu">
+  Execution provider (e.g., `'cpu'`, `'qnn'`, `'nnapi'`, `'xnnpack'`). See [Execution Providers](/features/execution-providers) for details.
+</ParamField>
+
+<ParamField path="hotwordsFile" type="string">
+  Path to hotwords file for contextual biasing. **Only supported for transducer models** (`transducer`, `nemo_transducer`).
+</ParamField>
+
+<ParamField path="hotwordsScore" type="number" default="1.5">
+  Hotwords boost score (only applies when `hotwordsFile` is set).
+</ParamField>
+
+<ParamField path="debug" type="boolean" default="false">
+  Enable debug logging in native layer.
+</ParamField>
+
+<ParamField path="modelOptions" type="SttModelOptions">
+  Model-specific options. Only the block for the loaded model type is applied:
+  - `whisper`: `{ language, task, tailPaddings, enableTokenTimestamps, enableSegmentTimestamps }`
+  - `senseVoice`: `{ language, useItn }`
+  - `canary`: `{ srcLang, tgtLang, usePnc }`
+  - `funasrNano`: `{ systemPrompt, userPrompt, maxNewTokens, temperature, topP, seed, language, itn, hotwords }`
+</ParamField>
+
+### SttEngine: transcribeFile(filePath)
+
+Transcribe a complete audio file.
+
+```typescript
+const result = await stt.transcribeFile('/path/to/audio.wav');
+```
+
+**Input requirements:**
+- Format: WAV (PCM)
+- Sample rate: 16 kHz (recommended, model-dependent)
+- Channels: Mono
+- Bit depth: 16-bit
+
+**Returns `SttRecognitionResult`:**
+
+```typescript
+interface SttRecognitionResult {
+  text: string;          // Transcribed text
+  tokens: string[];      // Token strings
+  timestamps: number[];  // Timestamps per token (model-dependent)
+  lang: string;          // Detected/specified language
+  emotion: string;       // Emotion label (SenseVoice)
+  event: string;         // Event label (model-dependent)
+  durations: number[];   // Duration info (TDT models)
+}
+```
+
+<Warning>
+**Audio format is critical.** Most models expect 16 kHz mono WAV. Use `ffmpeg` to convert:
+```bash
+ffmpeg -i input.mp3 -ar 16000 -ac 1 -sample_fmt s16 output.wav
+```
+</Warning>
+
+### SttEngine: transcribeSamples(samples, sampleRate)
+
+Transcribe from raw PCM samples (e.g., from microphone or decoder).
+
+```typescript
+const result = await stt.transcribeSamples(
+  samples,    // Float32Array or number[] in [-1, 1]
+  16000       // Sample rate in Hz
+);
+```
+
+**Parameters:**
+- `samples`: Float PCM samples in range `[-1, 1]`, mono
+- `sampleRate`: Sample rate in Hz
+
+### SttEngine: setConfig(config)
+
+Update recognizer configuration at runtime.
+
+```typescript
+await stt.setConfig({
+  decodingMethod: 'greedy_search',
+  maxActivePaths: 4,
+  hotwordsFile: '/path/to/hotwords.txt',
+  hotwordsScore: 1.5,
+  blankPenalty: 0.0,
+  ruleFsts: '/path/to/rule.fst',
+  ruleFars: '/path/to/rule.far',
+});
+```
+
+### SttEngine: destroy()
+
+Release native resources. **Must be called** when the engine is no longer needed.
+
+```typescript
+await stt.destroy();
+```
+
+## Model-Specific Options
+
+### Whisper Models
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/sherpa-onnx-whisper-tiny' },
+  modelType: 'whisper',
+  modelOptions: {
+    whisper: {
+      language: 'de',           // Language code
+      task: 'transcribe',       // 'transcribe' or 'translate'
+      tailPaddings: 1000,       // Padding at end
+      enableTokenTimestamps: true,    // Android only
+      enableSegmentTimestamps: true,  // Android only
+    },
+  },
+});
+```
+
+<Warning>
+**Language codes must be valid.** Invalid language codes can crash the app. Use `getWhisperLanguages()` to get the list of supported languages:
+
+```typescript
+import { getWhisperLanguages } from 'react-native-sherpa-onnx/stt';
+
+const languages = getWhisperLanguages();
+// [{ id: 'en', name: 'english' }, { id: 'de', name: 'german' }, ...]
+```
+</Warning>
+
+### SenseVoice Models
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/sherpa-onnx-sense-voice' },
+  modelType: 'sense_voice',
+  modelOptions: {
+    senseVoice: {
+      language: 'zh',     // 'auto', 'zh', 'en', 'yue', 'ja', 'ko'
+      useItn: true,       // Inverse text normalization
+    },
+  },
+});
+```
+
+### Canary Models
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/sherpa-onnx-canary' },
+  modelType: 'canary',
+  modelOptions: {
+    canary: {
+      srcLang: 'en',      // Source language
+      tgtLang: 'es',      // Target language
+      usePnc: true,       // Use punctuation
+    },
+  },
+});
+```
+
+## Hotwords (Contextual Biasing)
+
+Hotwords allow you to boost recognition of specific words or phrases.
+
+<Note>
+**Hotwords are only supported for transducer models** (`transducer`, `nemo_transducer`). Check support before showing UI:
+
+```typescript
+import { sttSupportsHotwords } from 'react-native-sherpa-onnx/stt';
+
+if (sttSupportsHotwords(modelType)) {
+  // Show hotwords options
+}
+```
+</Note>
+
+### Hotwords File Format
+
+Create a text file with one phrase per line, optionally with a boost factor:
+
+```
+REACT NATIVE 2.0
+SHERPA ONNX
+TURBOMODULE 1.5
+```
+
+### Using Hotwords
+
+```typescript
+// At initialization
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/transducer-en' },
+  modelType: 'transducer',
+  hotwordsFile: '/path/to/hotwords.txt',
+  hotwordsScore: 1.5,
+  modelingUnit: 'bpe',      // Required for BPE models
+  bpeVocab: '/path/to/bpe.vocab',  // Required when modelingUnit is 'bpe'
+});
+
+// Or update at runtime
+await stt.setConfig({
+  hotwordsFile: '/path/to/new-hotwords.txt',
+  hotwordsScore: 2.0,
+});
+```
+
+## Model Detection
+
+Detect model type without initializing:
+
+```typescript
+import { detectSttModel } from 'react-native-sherpa-onnx/stt';
+
+const result = await detectSttModel(
+  { type: 'asset', path: 'models/sherpa-onnx-whisper-tiny-en' },
+  { preferInt8: true }
+);
+
+if (result.success && result.modelType === 'whisper') {
+  // Show Whisper-specific options
+  console.log('Detected:', result.modelType);
+  console.log('Models:', result.detectedModels);
+}
+```
+
+## Performance Optimization
+
+### Quantization
+
+Int8 quantized models are faster and use less memory:
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/whisper-tiny' },
+  preferInt8: true,  // Prefer model.int8.onnx over model.onnx
+});
+```
+
+### Threading
+
+Increase threads for faster processing on multi-core devices:
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/paraformer' },
+  numThreads: 4,  // More threads = faster, but more CPU
+});
+```
+
+### Hardware Acceleration
+
+Use hardware acceleration when available:
+
+```typescript
+import { getQnnSupport, getNnapiSupport } from 'react-native-sherpa-onnx';
+
+// Check QNN (Qualcomm NPU) support
+const qnnSupport = await getQnnSupport();
+if (qnnSupport.canInit) {
+  const stt = await createSTT({
+    modelPath: { type: 'asset', path: 'models/transducer' },
+    provider: 'qnn',  // Use Qualcomm NPU
+  });
+}
+
+// Check NNAPI (Android GPU/DSP/NPU) support
+const nnapiSupport = await getNnapiSupport();
+if (nnapiSupport.canInit) {
+  const stt = await createSTT({
+    modelPath: { type: 'asset', path: 'models/paraformer' },
+    provider: 'nnapi',  // Use NNAPI
+  });
+}
+```
+
+<Info>
+See [Execution Providers](/features/execution-providers) for detailed information on hardware acceleration.
+</Info>
+
+## Common Use Cases
+
+### Transcribe with Language Detection
+
+```typescript
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/whisper-multilingual' },
+  modelType: 'whisper',
+});
+
+const result = await stt.transcribeFile(audioPath);
+console.log('Text:', result.text);
+console.log('Detected language:', result.lang);
+
+await stt.destroy();
+```
+
+### Batch Processing Multiple Files
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/paraformer-zh' },
+  numThreads: 4,
+});
+
+const files = ['/path/1.wav', '/path/2.wav', '/path/3.wav'];
+const results = [];
+
+for (const file of files) {
+  const result = await stt.transcribeFile(file);
+  results.push({ file, text: result.text });
+}
+
+await stt.destroy();
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Error: STT initialization failed">
+    - Verify the model directory exists and contains all required files
+    - Check that model files match the expected structure for the model type
+    - Try `modelType: 'auto'` to let the SDK detect the type
+    - Enable `debug: true` to see detailed initialization logs
+  </Accordion>
+
+  <Accordion title="Poor transcription quality">
+    - Ensure audio is 16 kHz mono WAV (most models)
+    - Check audio quality and noise levels
+    - Try a larger/better model
+    - Use `preferInt8: false` for full precision
+  </Accordion>
+
+  <Accordion title="Hotwords not working">
+    - Verify the model type supports hotwords (`transducer`, `nemo_transducer` only)
+    - Check `modelingUnit` and `bpeVocab` are set correctly for BPE models
+    - Ensure hotwords file format is correct (one phrase per line)
+    - Increase `hotwordsScore` for stronger boosting
+  </Accordion>
+
+  <Accordion title="Out of memory errors">
+    - Use `preferInt8: true` for smaller models
+    - Reduce `numThreads`
+    - Process shorter audio segments
+    - Close other apps to free memory
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Streaming STT" icon="signal-stream" href="/features/streaming-stt">
+    Real-time recognition with partial results
+  </Card>
+  <Card title="Model Setup" icon="folder" href="/features/model-setup">
+    Learn how to bundle and load models
+  </Card>
+  <Card title="Execution Providers" icon="microchip" href="/features/execution-providers">
+    Hardware acceleration (QNN, NNAPI, XNNPACK)
+  </Card>
+  <Card title="Text-to-Speech" icon="volume" href="/features/text-to-speech">
+    Convert text to speech
+  </Card>
+</CardGroup>

@@ -1,0 +1,188 @@
+---
+title: STT Models Overview
+description: Overview of all speech-to-text model types supported by react-native-sherpa-onnx
+---
+
+# Speech-to-Text Models Overview
+
+react-native-sherpa-onnx supports a wide range of speech-to-text (STT) model architectures, from fast streaming transducers to multilingual models like Whisper. This guide helps you choose the right model for your use case.
+
+## Model Comparison
+
+<CardGroup cols={2}>
+  <Card title="Zipformer/Transducer" icon="bolt" href="/models/stt/transducer">
+    Fast streaming recognition with excellent accuracy. Best for real-time use cases.
+  </Card>
+  <Card title="Paraformer" icon="gauge-high" href="/models/stt/paraformer">
+    Non-autoregressive ASR. Fast batch processing with high accuracy.
+  </Card>
+  <Card title="Whisper" icon="language" href="/models/stt/whisper">
+    Multilingual, robust zero-shot recognition. Strong for diverse audio conditions.
+  </Card>
+  <Card title="NeMo CTC" icon="microphone" href="/models/stt/nemo-ctc">
+    Excellent for English and streaming. Good balance of speed and accuracy.
+  </Card>
+  <Card title="Other Models" icon="grid" href="/models/stt/other-models">
+    WeNet, SenseVoice, FunASR, Moonshine, and specialized models.
+  </Card>
+</CardGroup>
+
+## Quick Comparison Table
+
+| Model Type | Streaming | Multilingual | Speed | Use Case |
+|------------|-----------|--------------|-------|----------|
+| **Zipformer/Transducer** | ✅ Yes | Depends | Fast | Real-time recognition, voice assistants |
+| **LSTM Transducer** | ✅ Yes | Depends | Fast | Streaming ASR, mobile apps |
+| **Paraformer** | ✅ Yes | Limited | Very Fast | Fast batch transcription |
+| **Whisper** | ❌ No | ✅ Yes (90+ langs) | Medium | Multilingual transcription, diverse audio |
+| **NeMo CTC** | ✅ Yes | Limited | Fast | English streaming, live captions |
+| **WeNet CTC** | ❌ No | Limited | Fast | Compact deployment |
+| **SenseVoice** | ❌ No | ✅ Yes | Medium | Emotion detection, punctuation |
+| **FunASR Nano** | ❌ No | Limited | Medium | LLM-based ASR with prompts |
+| **Moonshine** | ✅ Yes (v1 & v2) | Limited | Fast | Streaming-capable lightweight ASR |
+| **Fire Red ASR** | ❌ No | Limited | Medium | Encoder-decoder ASR |
+| **Dolphin** | ❌ No | Limited | Fast | Single-model CTC |
+| **Canary** | ❌ No | ✅ Yes | Medium | Multilingual NeMo model |
+| **Omnilingual** | ❌ No | ✅ Yes | Medium | Wide language coverage |
+| **Tone CTC** | ✅ Yes | Limited | Very Fast | Lightweight streaming CTC |
+
+## Choosing a Model
+
+### For Real-Time Recognition (Streaming)
+
+If you need **live recognition from a microphone**, choose one of these streaming-capable models:
+
+- **Zipformer/Transducer** – Best overall for streaming, excellent accuracy
+- **NeMo CTC** – Great for English streaming applications
+- **Tone CTC** – Lightweight option for resource-constrained devices
+- **LSTM Transducer** – LSTM-based streaming alternative
+- **Paraformer** – Fast streaming with non-autoregressive approach
+- **Moonshine** – Modern streaming-capable architecture
+
+### For Batch/Offline Transcription
+
+If you're transcribing **pre-recorded audio files**:
+
+- **Whisper** – Best for multilingual content, robust to noise
+- **Paraformer** – Fastest for single-language batch processing
+- **SenseVoice** – When you need emotion labels and punctuation
+- **Canary** – Multilingual with good accuracy
+
+### By Language Support
+
+**English Only:**
+- NeMo CTC (streaming)
+- Tone CTC (streaming)
+- Many Zipformer variants
+
+**Multilingual (90+ languages):**
+- Whisper (offline)
+- Canary (offline)
+- Omnilingual (offline)
+- SenseVoice (5 languages + emotion)
+
+**Chinese:**
+- Paraformer (excellent for Mandarin)
+- FunASR Nano (LLM-based with prompts)
+- SenseVoice (Chinese + emotion)
+
+### By Device Constraints
+
+**Low-end devices / limited RAM:**
+- Tone CTC (lightweight streaming)
+- Dolphin (compact single-model)
+- WeNet CTC (compact deployment)
+- Use `int8` quantized variants when available
+
+**High-end devices:**
+- Whisper (large models)
+- Canary (multilingual)
+- Full Zipformer models
+
+## Model Detection
+
+The SDK automatically detects model types based on folder name patterns and file layouts. You can also force a specific type:
+
+```typescript
+import { createSTT, detectSttModel } from 'react-native-sherpa-onnx/stt';
+
+// Auto-detect model type
+const detectedInfo = await detectSttModel({
+  type: 'asset',
+  path: 'models/sherpa-onnx-whisper-tiny-en'
+});
+console.log(detectedInfo.modelType); // 'whisper'
+
+// Create STT with auto-detection
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/sherpa-onnx-whisper-tiny-en' },
+  modelType: 'auto', // Auto-detect
+  preferInt8: true,
+});
+```
+
+## Performance Tips
+
+### Use Quantized Models
+
+Set `preferInt8: true` to automatically use int8 quantized models when available:
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/whisper-tiny' },
+  preferInt8: true, // Faster inference, smaller memory footprint
+});
+```
+
+### Adjust Thread Count
+
+Increase threads on multi-core devices:
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/zipformer' },
+  numThreads: 4, // Use multiple cores
+});
+```
+
+### Use Execution Providers
+
+Leverage hardware acceleration:
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/paraformer' },
+  provider: 'nnapi', // Android NNAPI
+  // provider: 'xnnpack', // For XNNPACK
+  // provider: 'qnn',     // Qualcomm QNN
+});
+```
+
+See the [Execution Providers](/features/execution-providers) guide for more details.
+
+## Download Links
+
+All model downloads are available from the sherpa-onnx pretrained models repository:
+
+- [Transducer Models](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/offline-transducer/index.html)
+- [Paraformer Models](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/offline-paraformer/index.html)
+- [Whisper Models](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/whisper/index.html)
+- [NeMo CTC Models](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/offline-ctc/nemo/index.html)
+- [All STT Models](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/index.html)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Model Setup Guide" icon="download" href="/model-setup">
+    Learn how to download and bundle models with your app
+  </Card>
+  <Card title="STT API Reference" icon="code" href="/api/stt">
+    Detailed API documentation for speech recognition
+  </Card>
+  <Card title="Streaming STT" icon="waveform" href="/api/streaming-stt">
+    Real-time recognition from microphone
+  </Card>
+  <Card title="Hotwords" icon="star" href="/features/hotwords">
+    Contextual biasing for improved accuracy
+  </Card>
+</CardGroup>

@@ -1,0 +1,643 @@
+---
+title: 'Model Download Manager'
+description: 'Download and manage Sherpa-ONNX models from GitHub Releases'
+icon: 'download'
+---
+
+## Overview
+
+The **Model Download Manager** provides a complete solution for downloading, caching, and managing Sherpa-ONNX model assets from official GitHub Releases. It handles archive models (`.tar.bz2`) and single-file models (`.onnx`), with built-in checksum validation, progress tracking, and disk space management.
+
+<Info>
+  Import from: `react-native-sherpa-onnx/download`
+</Info>
+
+### Key Features
+
+- **Official model registry** from GitHub Releases
+- **Archive extraction** with native libarchive (tar.bz2)
+- **Checksum validation** (SHA-256) for integrity verification
+- **Download resume** support for interrupted downloads
+- **Progress events** with speed and ETA calculation
+- **Disk space checking** before downloads
+- **LRU cache cleanup** for automatic model management
+- **Retry logic** with exponential backoff
+
+---
+
+## Model Categories
+
+The download manager organizes models by category:
+
+```typescript
+import { ModelCategory } from 'react-native-sherpa-onnx/download';
+
+enum ModelCategory {
+  Tts = 'tts',
+  Stt = 'stt',
+  Vad = 'vad',
+  Diarization = 'diarization',
+  Enhancement = 'enhancement',
+  Separation = 'separation',
+}
+```
+
+---
+
+## Quick Start
+
+Typical flow: refresh the model registry, download a model, then initialize STT/TTS with the local path.
+
+```typescript
+import {
+  ModelCategory,
+  refreshModelsByCategory,
+  downloadModelByCategory,
+  getLocalModelPathByCategory,
+} from 'react-native-sherpa-onnx/download';
+import { createTTS } from 'react-native-sherpa-onnx/tts';
+
+// 1. Refresh the TTS model registry
+await refreshModelsByCategory(ModelCategory.Tts, { forceRefresh: true });
+
+// 2. Download a specific model
+await downloadModelByCategory(
+  ModelCategory.Tts,
+  'vits-piper-en_US-lessac-medium',
+  {
+    onProgress: (progress) => {
+      console.log(`${progress.percent.toFixed(1)}%`);
+    },
+  }
+);
+
+// 3. Get local path and initialize TTS
+const localPath = await getLocalModelPathByCategory(
+  ModelCategory.Tts,
+  'vits-piper-en_US-lessac-medium'
+);
+
+if (localPath) {
+  const tts = await createTTS({
+    modelPath: { type: 'file', path: localPath },
+    modelType: 'vits',
+  });
+}
+```
+
+---
+
+## API Reference
+
+### refreshModelsByCategory
+
+Fetch and cache the latest model list from GitHub Releases. Use this before showing the available models UI.
+
+```typescript
+await refreshModelsByCategory(ModelCategory.Stt, { 
+  forceRefresh: true,
+  cacheTtlMinutes: 1440, // 24 hours
+});
+```
+
+<ParamField path="category" type="ModelCategory" required>
+  The model category to refresh
+</ParamField>
+
+<ParamField path="options" type="object" optional>
+  <Expandable title="Refresh options">
+    <ParamField path="forceRefresh" type="boolean" default={false}>
+      Bypass cache and fetch fresh data from GitHub
+    </ParamField>
+    
+    <ParamField path="cacheTtlMinutes" type="number" default={1440}>
+      Cache time-to-live in minutes (default: 24 hours)
+    </ParamField>
+    
+    <ParamField path="maxRetries" type="number" default={3}>
+      Maximum number of retry attempts on network failure
+    </ParamField>
+    
+    <ParamField path="signal" type="AbortSignal" optional>
+      AbortSignal for cancellation support
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="models" type="ModelMetaBase[]">
+  Array of model metadata objects
+</ResponseField>
+
+---
+
+### listModelsByCategory
+
+Return the cached model list. If no cache exists yet, returns an empty array.
+
+```typescript
+const models = await listModelsByCategory(ModelCategory.Stt);
+
+models.forEach(model => {
+  console.log(model.id, model.displayName, model.bytes);
+});
+```
+
+<ResponseField name="models" type="ModelMetaBase[]">
+  Array of cached model metadata
+  
+  <Expandable title="ModelMetaBase properties">
+    <ResponseField name="id" type="string">
+      Unique model identifier
+    </ResponseField>
+    
+    <ResponseField name="displayName" type="string">
+      Human-readable model name
+    </ResponseField>
+    
+    <ResponseField name="downloadUrl" type="string">
+      GitHub download URL
+    </ResponseField>
+    
+    <ResponseField name="archiveExt" type="'tar.bz2' | 'onnx'">
+      Archive file extension type
+    </ResponseField>
+    
+    <ResponseField name="bytes" type="number">
+      Download size in bytes
+    </ResponseField>
+    
+    <ResponseField name="sha256" type="string" optional>
+      SHA-256 checksum for validation
+    </ResponseField>
+    
+    <ResponseField name="category" type="ModelCategory">
+      Model category
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+### downloadModelByCategory
+
+Download a model by ID with support for progress callbacks, cancellation, and automatic retries.
+
+```typescript
+await downloadModelByCategory(
+  ModelCategory.Stt,
+  'sherpa-onnx-whisper-tiny',
+  {
+    onProgress: (progress) => {
+      console.log(
+        `${progress.percent.toFixed(1)}% - ` +
+        `${(progress.speed! / 1024 / 1024).toFixed(2)} MB/s - ` +
+        `ETA: ${progress.eta?.toFixed(0)}s`
+      );
+    },
+    maxRetries: 2,
+  }
+);
+```
+
+<ParamField path="category" type="ModelCategory" required>
+  The model category
+</ParamField>
+
+<ParamField path="id" type="string" required>
+  Model ID to download
+</ParamField>
+
+<ParamField path="options" type="object" optional>
+  <Expandable title="Download options">
+    <ParamField path="onProgress" type="(progress: DownloadProgress) => void" optional>
+      Progress callback function
+      
+      ```typescript
+      type DownloadProgress = {
+        bytesDownloaded: number;
+        totalBytes: number;
+        percent: number;
+        phase?: 'downloading' | 'extracting';
+        speed?: number; // bytes per second
+        eta?: number; // estimated seconds remaining
+      };
+      ```
+    </ParamField>
+    
+    <ParamField path="overwrite" type="boolean" default={false}>
+      Overwrite existing model files
+    </ParamField>
+    
+    <ParamField path="signal" type="AbortSignal" optional>
+      AbortSignal for cancellation support
+    </ParamField>
+    
+    <ParamField path="maxRetries" type="number" default={2}>
+      Maximum retry attempts on download failure
+    </ParamField>
+    
+    <ParamField path="onChecksumIssue" type="(issue: ChecksumIssue) => Promise<boolean>" optional>
+      Custom handler for checksum validation issues. Return `true` to keep the file, `false` to delete and abort.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="result" type="DownloadResult">
+  <Expandable title="DownloadResult properties">
+    <ResponseField name="modelId" type="string">
+      The downloaded model ID
+    </ResponseField>
+    
+    <ResponseField name="localPath" type="string">
+      Local filesystem path to the model directory
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+### getLocalModelPathByCategory
+
+Get the local path of a downloaded model for initialization. Updates the model's `lastUsed` timestamp.
+
+```typescript
+const localPath = await getLocalModelPathByCategory(
+  ModelCategory.Stt,
+  'sherpa-onnx-whisper-tiny'
+);
+
+if (localPath) {
+  // Use the path to initialize STT/TTS
+  console.log('Model path:', localPath);
+} else {
+  console.log('Model not downloaded');
+}
+```
+
+<ResponseField name="path" type="string | null">
+  Local path to the model directory, or `null` if not downloaded
+</ResponseField>
+
+---
+
+### listDownloadedModelsByCategory
+
+Return only models that are fully downloaded on this device.
+
+```typescript
+const downloaded = await listDownloadedModelsByCategory(ModelCategory.Tts);
+
+console.log(`${downloaded.length} models downloaded`);
+```
+
+<ResponseField name="models" type="ModelMetaBase[]">
+  Array of downloaded model metadata
+</ResponseField>
+
+---
+
+### isModelDownloadedByCategory
+
+Check whether a specific model is downloaded and ready to use.
+
+```typescript
+const isDownloaded = await isModelDownloadedByCategory(
+  ModelCategory.Stt,
+  'sherpa-onnx-whisper-tiny'
+);
+
+if (!isDownloaded) {
+  // Download the model
+}
+```
+
+<ResponseField name="downloaded" type="boolean">
+  `true` if the model is downloaded and ready, `false` otherwise
+</ResponseField>
+
+---
+
+### getModelsCacheStatusByCategory
+
+Return the last update timestamp for the cached model registry.
+
+```typescript
+const status = await getModelsCacheStatusByCategory(ModelCategory.Tts);
+
+if (status.lastUpdated) {
+  console.log('Cache last updated:', new Date(status.lastUpdated));
+}
+```
+
+<ResponseField name="status" type="CacheStatus">
+  <Expandable title="CacheStatus properties">
+    <ResponseField name="lastUpdated" type="string | null">
+      ISO timestamp of last cache update, or `null` if no cache
+    </ResponseField>
+    
+    <ResponseField name="source" type="'cache' | 'remote'">
+      Data source indicator
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+### getModelByIdByCategory
+
+Return metadata for a specific model ID from the cached registry.
+
+```typescript
+const model = await getModelByIdByCategory(
+  ModelCategory.Tts,
+  'vits-piper-en_US-lessac-medium'
+);
+
+if (model) {
+  console.log('Model size:', (model.bytes / 1024 / 1024).toFixed(2), 'MB');
+}
+```
+
+<ResponseField name="model" type="ModelMetaBase | null">
+  Model metadata or `null` if not found
+</ResponseField>
+
+---
+
+### deleteModelByCategory
+
+Remove a downloaded model and its cached files from disk.
+
+```typescript
+await deleteModelByCategory(
+  ModelCategory.Tts,
+  'vits-piper-en_US-lessac-medium'
+);
+
+console.log('Model deleted');
+```
+
+<Warning>
+  This permanently deletes all model files. Use with caution.
+</Warning>
+
+---
+
+### clearModelCacheByCategory
+
+Clear the cached model registry for a category. Does not delete downloaded models.
+
+```typescript
+await clearModelCacheByCategory(ModelCategory.Stt);
+```
+
+---
+
+## Progress Events
+
+### subscribeDownloadProgress
+
+Subscribe to global download progress updates for all models. Returns an unsubscribe function.
+
+```typescript
+import { subscribeDownloadProgress } from 'react-native-sherpa-onnx/download';
+
+const unsubscribe = subscribeDownloadProgress((category, modelId, progress) => {
+  console.log(
+    `${category}:${modelId} - ${progress.percent.toFixed(1)}%`,
+    progress.phase // 'downloading' | 'extracting'
+  );
+  
+  if (progress.speed) {
+    console.log(`Speed: ${(progress.speed / 1024 / 1024).toFixed(2)} MB/s`);
+  }
+  
+  if (progress.eta) {
+    console.log(`ETA: ${progress.eta.toFixed(0)} seconds`);
+  }
+});
+
+// Call unsubscribe() when no longer needed
+unsubscribe();
+```
+
+<ParamField path="listener" type="DownloadProgressListener" required>
+  Callback function that receives progress updates
+  
+  ```typescript
+  type DownloadProgressListener = (
+    category: ModelCategory,
+    modelId: string,
+    progress: DownloadProgress
+  ) => void;
+  ```
+</ParamField>
+
+---
+
+### subscribeModelsListUpdated
+
+Subscribe to model list refresh events. Returns an unsubscribe function.
+
+```typescript
+import { subscribeModelsListUpdated } from 'react-native-sherpa-onnx/download';
+
+const unsubscribe = subscribeModelsListUpdated((category, models) => {
+  console.log(`${category} list updated: ${models.length} models`);
+});
+
+// Call unsubscribe() when no longer needed
+unsubscribe();
+```
+
+---
+
+## Checksum Validation
+
+The download manager validates SHA-256 checksums when available to ensure file integrity:
+
+<Steps>
+  <Step title="Download checksum.txt">
+    Fetches `checksum.txt` from GitHub Release and caches it in memory
+  </Step>
+  
+  <Step title="Archive validation (tar.bz2)">
+    Uses native libarchive hashing during extraction for efficient validation
+  </Step>
+  
+  <Step title="Single-file validation (.onnx)">
+    Uses local SHA-256 calculation after download
+  </Step>
+  
+  <Step title="Fallback to GitHub digest">
+    If `checksum.txt` doesn't list a file, uses the GitHub asset digest if available
+  </Step>
+</Steps>
+
+### Checksum Issue Handling
+
+By default, if checksum validation fails, the user is prompted with an alert dialog to either:
+
+- **Delete and cancel**: Remove the downloaded file and abort
+- **Keep file**: Continue with the potentially corrupted file
+
+You can provide a custom handler:
+
+```typescript
+await downloadModelByCategory(ModelCategory.Stt, 'model-id', {
+  onChecksumIssue: async (issue) => {
+    // Custom handling logic
+    console.error('Checksum issue:', issue.message);
+    return false; // Delete file and abort
+  },
+});
+```
+
+---
+
+## LRU Cache Management
+
+### listDownloadedModelsWithMetadata
+
+Get all downloaded models with metadata including download time, last used time, and disk size.
+
+```typescript
+import { listDownloadedModelsWithMetadata } from 'react-native-sherpa-onnx/download';
+
+const modelsWithMetadata = await listDownloadedModelsWithMetadata(
+  ModelCategory.Tts
+);
+
+modelsWithMetadata.forEach(item => {
+  console.log(
+    item.model.id,
+    'Last used:', item.lastUsed,
+    'Size:', (item.sizeOnDisk || 0) / 1024 / 1024, 'MB'
+  );
+});
+```
+
+---
+
+### cleanupLeastRecentlyUsed
+
+Automatically remove least recently used models to free disk space.
+
+```typescript
+import { cleanupLeastRecentlyUsed } from 'react-native-sherpa-onnx/download';
+
+// Free up at least 500 MB by removing old models
+const deletedIds = await cleanupLeastRecentlyUsed(ModelCategory.Stt, {
+  targetBytes: 500 * 1024 * 1024,
+  keepCount: 2, // Always keep at least 2 models
+  maxModelsToDelete: 5, // Delete max 5 models
+});
+
+console.log('Deleted models:', deletedIds);
+```
+
+<ParamField path="category" type="ModelCategory" required>
+  Model category to clean up
+</ParamField>
+
+<ParamField path="options" type="object" optional>
+  <Expandable title="Cleanup options">
+    <ParamField path="targetBytes" type="number" optional>
+      Target amount of bytes to free. Cleanup stops once this is reached.
+    </ParamField>
+    
+    <ParamField path="keepCount" type="number" default={1}>
+      Minimum number of models to keep (won't delete if count would go below this)
+    </ParamField>
+    
+    <ParamField path="maxModelsToDelete" type="number" optional>
+      Maximum number of models to delete in one operation
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="deletedIds" type="string[]">
+  Array of deleted model IDs
+</ResponseField>
+
+---
+
+## Download Resume
+
+The download manager supports automatic resume for interrupted downloads:
+
+- **Partial downloads are preserved** when download is interrupted
+- **Resume headers** are sent on retry to continue from last byte
+- **Non-resumable errors** (404, 410) trigger full file deletion and restart
+- **Extracted directories** are cleaned up but archives are kept for resume
+
+```typescript
+const controller = new AbortController();
+
+// Start download
+const downloadPromise = downloadModelByCategory(
+  ModelCategory.Stt,
+  'sherpa-onnx-whisper-tiny',
+  { signal: controller.signal }
+);
+
+// Cancel after 5 seconds
+setTimeout(() => controller.abort(), 5000);
+
+try {
+  await downloadPromise;
+} catch (err) {
+  console.log('Download cancelled, will resume on next attempt');
+}
+
+// Resume later - download continues from where it left off
+await downloadModelByCategory(ModelCategory.Stt, 'sherpa-onnx-whisper-tiny');
+```
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Cache Before Download" icon="clock-rotate-left">
+    Always call `refreshModelsByCategory` before showing the model list UI to ensure users see the latest available models.
+  </Card>
+  
+  <Card title="Progress Feedback" icon="spinner">
+    Use `onProgress` callbacks to show download progress to users. Display phase, percentage, speed, and ETA.
+  </Card>
+  
+  <Card title="Error Handling" icon="triangle-exclamation">
+    Handle download errors gracefully. Network failures will auto-retry with exponential backoff.
+  </Card>
+  
+  <Card title="Disk Space" icon="hard-drive">
+    Use `cleanupLeastRecentlyUsed` to automatically manage disk space when approaching limits.
+  </Card>
+  
+  <Card title="Download Resume" icon="rotate">
+    Leverage automatic resume support by preserving partial downloads on cancellation.
+  </Card>
+  
+  <Card title="Checksum Validation" icon="shield-check">
+    Don't skip checksum validation. It ensures model integrity and prevents corrupted files.
+  </Card>
+</CardGroup>
+
+---
+
+## Storage Locations
+
+Models are stored in platform-specific directories:
+
+- **iOS**: `DocumentDirectoryPath/sherpa-onnx/models/{category}/`
+- **Android**: `DocumentDirectoryPath/sherpa-onnx/models/{category}/`
+
+Cache files are stored in:
+
+- `DocumentDirectoryPath/sherpa-onnx/cache/`
+
+Each downloaded model has:
+- **Model directory**: `{category}/{model-id}/`
+- **Ready marker**: `{category}/{model-id}/.ready`
+- **Manifest**: `{category}/{model-id}/manifest.json`

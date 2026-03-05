@@ -1,0 +1,342 @@
+---
+title: Installation
+description: Install react-native-sherpa-onnx and configure iOS and Android platforms
+---
+
+# Installation
+
+Install react-native-sherpa-onnx in your React Native project and configure platform-specific setup.
+
+## Package Installation
+
+<CodeGroup>
+
+```bash npm
+npm install react-native-sherpa-onnx
+```
+
+```bash yarn
+yarn add react-native-sherpa-onnx
+```
+
+```bash pnpm
+pnpm add react-native-sherpa-onnx
+```
+
+</CodeGroup>
+
+### Peer Dependencies
+
+The library requires `@dr.pogodin/react-native-fs` for file operations:
+
+<CodeGroup>
+
+```bash npm
+npm install @dr.pogodin/react-native-fs
+```
+
+```bash yarn
+yarn add @dr.pogodin/react-native-fs
+```
+
+```bash pnpm
+pnpm add @dr.pogodin/react-native-fs
+```
+
+</CodeGroup>
+
+<Note>
+  If your project uses **Yarn v3+ or Plug'n'Play**, configure Yarn to use the Node Modules linker to avoid postinstall issues.
+</Note>
+
+### Yarn PnP Configuration
+
+If using Yarn v3+ with Plug'n'Play, add this to your `.yarnrc.yml`:
+
+```yaml .yarnrc.yml
+nodeLinker: node-modules
+```
+
+Alternatively, set the environment variable during install:
+
+```bash
+YARN_NODE_LINKER=node-modules yarn install
+```
+
+## Platform Setup
+
+<Tabs>
+  <Tab title="iOS">
+    
+## iOS Setup
+
+The sherpa-onnx **XCFramework is not shipped in the npm package** (size ~80MB). It is **downloaded automatically** when you run `pod install`.
+
+<Steps>
+
+<Step title="Install CocoaPods dependencies">
+
+Navigate to the `ios` directory and install pods:
+
+```bash
+cd ios
+bundle install
+bundle exec pod install
+```
+
+<Info>
+  The podspec automatically runs `scripts/setup-ios-framework.sh`, which downloads the XCFramework from GitHub Releases. The version is pinned in `third_party/sherpa-onnx-prebuilt/IOS_RELEASE_TAG`.
+</Info>
+
+</Step>
+
+<Step title="Verify framework download">
+
+The script downloads the XCFramework and libarchive sources. Libarchive is compiled from source as part of the Pod.
+
+You should see output similar to:
+
+```
+Downloading sherpa-onnx XCFramework v0.x.x...
+✓ Framework downloaded successfully
+```
+
+</Step>
+
+<Step title="Build your project">
+
+Return to the root directory and build:
+
+```bash
+cd ..
+npx react-native run-ios
+```
+
+</Step>
+
+</Steps>
+
+### iOS Requirements
+
+- **iOS 13.0+**
+- **Xcode 12.0+**
+- **CocoaPods 1.10+**
+
+### Framework Architecture
+
+The XCFramework includes:
+
+- **libsherpa-onnx-cxx-api.a** - C++ API merged into the static library
+- **libarchive** - Compiled from source for model archive extraction
+- Support for all iOS architectures (arm64, x86_64 for simulator)
+
+<Note>
+  The framework is fetched from [GitHub Releases](https://github.com/XDcobra/react-native-sherpa-onnx/releases?q=framework) and automatically cached by CocoaPods.
+</Note>
+
+### Advanced: Building the Framework Locally
+
+If you need a custom sherpa-onnx build (e.g., different version or patches):
+
+1. Build the XCFramework using the [build-sherpa-onnx-ios-framework](.github/workflows/build-sherpa-onnx-ios-framework.yml) workflow steps
+2. Place it in `ios/Frameworks/` before running `pod install`
+3. The Pod will use the local framework instead of downloading
+
+See [third_party/sherpa-onnx-prebuilt](third_party/sherpa-onnx-prebuilt/README.md) for build details.
+
+  </Tab>
+  
+  <Tab title="Android">
+    
+## Android Setup
+
+**No additional setup required!** The library automatically handles native dependencies via Gradle.
+
+<Steps>
+
+<Step title="Sync Gradle">
+
+The native dependencies are automatically downloaded and linked:
+
+```bash
+cd android
+./gradlew sync
+```
+
+</Step>
+
+<Step title="Build your project">
+
+```bash
+cd ..
+npx react-native run-android
+```
+
+</Step>
+
+</Steps>
+
+### Android Requirements
+
+- **Android API 24+** (Android 7.0+)
+- **Gradle 7.0+**
+- **Android SDK 31+** (for compilation)
+
+### Native Libraries
+
+The Gradle configuration automatically includes:
+
+- **sherpa-onnx native libraries** (CPU, NNAPI, XNNPACK, QNN support)
+- **ONNX Runtime AAR** for execution providers
+- **JNI bindings** for TurboModule communication
+
+### Execution Providers (Android)
+
+Android supports multiple execution providers for hardware acceleration:
+
+| Provider | Description | Availability |
+|----------|-------------|-------------|
+| **CPU** | Default CPU execution | All devices |
+| **NNAPI** | Android Neural Networks API | Android 8.1+ |
+| **XNNPACK** | CPU-optimized inference | All devices |
+| **QNN** | Qualcomm acceleration | Snapdragon devices |
+
+You can check provider support at runtime:
+
+```typescript
+import { getAvailableProviders, getNnapiSupport, getXnnpackSupport, getQnnSupport } from 'react-native-sherpa-onnx';
+
+const providers = await getAvailableProviders();
+console.log('Available providers:', providers);
+
+const nnapiSupport = await getNnapiSupport();
+console.log('NNAPI available:', nnapiSupport.providerCompiled);
+```
+
+See [Execution Providers](/features/execution-providers) for more details.
+
+### Play Asset Delivery (PAD)
+
+Optionally use Play Asset Delivery for on-demand model downloads:
+
+1. Configure fast-follow or on-demand asset packs in `build.gradle`
+2. Use `getAssetPackPath()` to access downloaded models
+3. See [Model Setup](/features/model-setup) for PAD configuration
+
+  </Tab>
+</Tabs>
+
+## Verify Installation
+
+Test that the native library is loaded correctly:
+
+```typescript App.tsx
+import { testSherpaInit } from 'react-native-sherpa-onnx';
+
+try {
+  const result = await testSherpaInit();
+  console.log('✓ sherpa-onnx initialized:', result);
+} catch (error) {
+  console.error('✗ Initialization failed:', error);
+}
+```
+
+Expected output:
+
+```
+✓ sherpa-onnx initialized: sherpa-onnx native library loaded successfully
+```
+
+## Requirements Summary
+
+<CardGroup cols={2}>
+  <Card title="React Native" icon="react">
+    Version **0.70 or higher**
+  </Card>
+  <Card title="Android" icon="android">
+    **API 24+** (Android 7.0+)
+  </Card>
+  <Card title="iOS" icon="apple">
+    **iOS 13.0+**, Xcode 12.0+
+  </Card>
+  <Card title="File System" icon="folder">
+    **@dr.pogodin/react-native-fs**
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="iOS: Framework download fails">
+    **Symptom**: Pod install fails with "Failed to download sherpa-onnx XCFramework"
+    
+    **Solution**:
+    1. Check your internet connection
+    2. Verify the release tag exists in [GitHub Releases](https://github.com/XDcobra/react-native-sherpa-onnx/releases)
+    3. Try manual download: `bash scripts/setup-ios-framework.sh`
+    4. Check `third_party/sherpa-onnx-prebuilt/IOS_RELEASE_TAG` for the expected version
+  </Accordion>
+  
+  <Accordion title="iOS: 'sherpa-onnx/c-api.h' file not found">
+    **Symptom**: Build fails with missing header files
+    
+    **Solution**:
+    1. Clean build folder: `cd ios && rm -rf build && rm -rf ~/Library/Developer/Xcode/DerivedData`
+    2. Re-install pods: `bundle exec pod install --repo-update`
+    3. Verify `ios/Frameworks/sherpa-onnx.xcframework` exists
+  </Accordion>
+  
+  <Accordion title="Android: Build fails with 'Could not resolve com.sherpa-onnx:...'">
+    **Symptom**: Gradle sync fails with dependency resolution errors
+    
+    **Solution**:
+    1. Clear Gradle cache: `cd android && ./gradlew clean`
+    2. Sync project: `./gradlew --refresh-dependencies`
+    3. Check `android/build.gradle` has `mavenCentral()` repository
+  </Accordion>
+  
+  <Accordion title="Yarn PnP: Module not found errors">
+    **Symptom**: Runtime errors with Yarn v3+ Plug'n'Play
+    
+    **Solution**:
+    Add to `.yarnrc.yml`:
+    ```yaml
+    nodeLinker: node-modules
+    ```
+    Then run:
+    ```bash
+    yarn install
+    ```
+  </Accordion>
+  
+  <Accordion title="testSherpaInit() fails">
+    **Symptom**: `testSherpaInit()` throws an error
+    
+    **Solution**:
+    1. **iOS**: Run `cd ios && bundle exec pod install`
+    2. **Android**: Run `cd android && ./gradlew clean build`
+    3. Rebuild the app completely
+    4. Check that peer dependencies are installed
+  </Accordion>
+</AccordionGroup>
+
+<Warning>
+  If you encounter persistent issues, check the [GitHub Issues](https://github.com/XDcobra/react-native-sherpa-onnx/issues) or file a new issue with your error logs.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Build your first STT or TTS example
+  </Card>
+  <Card title="Model Setup" icon="database" href="/model-setup">
+    Learn how to bundle and load models
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference">
+    Explore the complete API
+  </Card>
+  <Card title="Example App" icon="mobile" href="/examples">
+    Run the full-featured example app
+  </Card>
+</CardGroup>

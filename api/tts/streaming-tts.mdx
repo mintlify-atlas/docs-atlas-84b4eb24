@@ -1,0 +1,385 @@
+---
+title: createStreamingTTS()
+description: Create a streaming TTS engine for incremental audio generation with chunk callbacks
+---
+
+Create a streaming TTS engine instance for incremental speech synthesis with chunk callbacks and built-in PCM playback. This is ideal for generating and playing audio as it's synthesized, providing a more responsive user experience.
+
+For one-shot batch synthesis, use [createTTS()](/api/tts/create-tts) instead.
+
+```typescript
+function createStreamingTTS(
+  options: TTSInitializeOptions | ModelPathConfig
+): Promise<StreamingTtsEngine>
+```
+
+## Parameters
+
+Same as [createTTS()](/api/tts/create-tts#parameters) - see there for full parameter documentation.
+
+## Returns
+
+<ResponseField name="Promise<StreamingTtsEngine>" type="StreamingTtsEngine">
+  A streaming TTS engine instance.
+  
+  <Expandable title="StreamingTtsEngine interface">
+    <ResponseField name="instanceId" type="string">
+      Unique instance identifier.
+    </ResponseField>
+    
+    <ResponseField name="generateSpeechStream" type="(text: string, options: TtsGenerationOptions | undefined, handlers: TtsStreamHandlers) => Promise<TtsStreamController>">
+      Generate speech in streaming mode with chunk callbacks.
+    </ResponseField>
+    
+    <ResponseField name="cancelSpeechStream" type="() => Promise<void>">
+      Cancel the current streaming generation.
+    </ResponseField>
+    
+    <ResponseField name="startPcmPlayer" type="(sampleRate: number, channels: number) => Promise<void>">
+      Start built-in PCM audio player.
+    </ResponseField>
+    
+    <ResponseField name="writePcmChunk" type="(samples: number[]) => Promise<void>">
+      Write float PCM samples to the player (call from onChunk).
+    </ResponseField>
+    
+    <ResponseField name="stopPcmPlayer" type="() => Promise<void>">
+      Stop and release the PCM player.
+    </ResponseField>
+    
+    <ResponseField name="getModelInfo" type="() => Promise<TTSModelInfo>">
+      Get model sample rate and number of speakers.
+    </ResponseField>
+    
+    <ResponseField name="getSampleRate" type="() => Promise<number>">
+      Get model sample rate.
+    </ResponseField>
+    
+    <ResponseField name="getNumSpeakers" type="() => Promise<number>">
+      Get number of speakers/voices.
+    </ResponseField>
+    
+    <ResponseField name="destroy" type="() => Promise<void>">
+      Release native resources. Must be called when done.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Stream Handlers
+
+### TtsStreamHandlers
+
+Callbacks for streaming events.
+
+```typescript
+interface TtsStreamHandlers {
+  onChunk?: (chunk: TtsStreamChunk) => void;
+  onEnd?: (event: TtsStreamEnd) => void;
+  onError?: (event: TtsStreamError) => void;
+}
+```
+
+### TtsStreamChunk
+
+```typescript
+interface TtsStreamChunk {
+  instanceId?: string;
+  requestId?: string;
+  samples: number[];      // Float PCM samples in [-1, 1]
+  sampleRate: number;
+  progress: number;       // 0-100
+  isFinal: boolean;
+}
+```
+
+### TtsStreamController
+
+Controller returned by `generateSpeechStream()`.
+
+```typescript
+interface TtsStreamController {
+  cancel(): Promise<void>;
+  unsubscribe(): void;
+}
+```
+
+## Examples
+
+### Basic Streaming
+
+```typescript
+import { createStreamingTTS, assetModelPath } from 'react-native-sherpa-onnx/tts';
+
+const tts = await createStreamingTTS({
+  modelPath: assetModelPath('models/vits-piper-en'),
+});
+
+const allChunks: number[] = [];
+
+const controller = await tts.generateSpeechStream(
+  'Hello, this is streaming synthesis!',
+  undefined,
+  {
+    onChunk: (chunk) => {
+      console.log('Received chunk:', chunk.samples.length, 'samples');
+      allChunks.push(...chunk.samples);
+    },
+    onEnd: (event) => {
+      console.log('Synthesis complete');
+      console.log('Total samples:', allChunks.length);
+    },
+    onError: (error) => {
+      console.error('Error:', error.message);
+    },
+  }
+);
+
+await tts.destroy();
+```
+
+### Stream with Built-in Playback
+
+```typescript
+import { createStreamingTTS, assetModelPath } from 'react-native-sherpa-onnx/tts';
+
+const tts = await createStreamingTTS({
+  modelPath: assetModelPath('models/vits-piper-en'),
+});
+
+const modelInfo = await tts.getModelInfo();
+
+// Start PCM player
+await tts.startPcmPlayer(modelInfo.sampleRate, 1);
+
+const controller = await tts.generateSpeechStream(
+  'This will play as it generates.',
+  undefined,
+  {
+    onChunk: async (chunk) => {
+      // Write samples to player for immediate playback
+      await tts.writePcmChunk(chunk.samples);
+    },
+    onEnd: async () => {
+      console.log('Playback complete');
+      await tts.stopPcmPlayer();
+    },
+    onError: async (error) => {
+      console.error('Error:', error.message);
+      await tts.stopPcmPlayer();
+    },
+  }
+);
+
+await tts.destroy();
+```
+
+### Progress Indicator
+
+```typescript
+import { createStreamingTTS, assetModelPath } from 'react-native-sherpa-onnx/tts';
+import { useState } from 'react';
+
+function TTSComponent() {
+  const [progress, setProgress] = useState(0);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const generate = async () => {
+    const tts = await createStreamingTTS({
+      modelPath: assetModelPath('models/vits-piper-en'),
+    });
+
+    setIsGenerating(true);
+    setProgress(0);
+
+    await tts.generateSpeechStream(
+      'Long text to generate...',
+      undefined,
+      {
+        onChunk: (chunk) => {
+          setProgress(chunk.progress);
+        },
+        onEnd: () => {
+          setIsGenerating(false);
+          setProgress(100);
+        },
+        onError: (error) => {
+          console.error(error);
+          setIsGenerating(false);
+        },
+      }
+    );
+
+    await tts.destroy();
+  };
+
+  return (
+    <View>
+      <Button title="Generate" onPress={generate} disabled={isGenerating} />
+      {isGenerating && <Text>Progress: {progress.toFixed(0)}%</Text>}
+    </View>
+  );
+}
+```
+
+### Cancel Generation
+
+```typescript
+import { createStreamingTTS, assetModelPath } from 'react-native-sherpa-onnx/tts';
+
+const tts = await createStreamingTTS({
+  modelPath: assetModelPath('models/vits-piper-en'),
+});
+
+const controller = await tts.generateSpeechStream(
+  'Very long text that takes a while to generate...',
+  undefined,
+  {
+    onChunk: (chunk) => {
+      console.log('Chunk received');
+    },
+    onEnd: () => {
+      console.log('Complete');
+    },
+  }
+);
+
+// Cancel after 2 seconds
+setTimeout(async () => {
+  await controller.cancel();
+  console.log('Generation cancelled');
+}, 2000);
+
+await tts.destroy();
+```
+
+### Multi-Speaker Streaming
+
+```typescript
+import { createStreamingTTS, assetModelPath } from 'react-native-sherpa-onnx/tts';
+
+const tts = await createStreamingTTS({
+  modelPath: assetModelPath('models/vits-multi-speaker'),
+});
+
+const modelInfo = await tts.getModelInfo();
+console.log('Available speakers:', modelInfo.numSpeakers);
+
+// Generate with different speakers
+for (let sid = 0; sid < modelInfo.numSpeakers; sid++) {
+  await tts.generateSpeechStream(
+    `This is speaker ${sid + 1}.`,
+    { sid },
+    {
+      onChunk: (chunk) => {
+        console.log(`Speaker ${sid}: ${chunk.samples.length} samples`);
+      },
+      onEnd: () => {
+        console.log(`Speaker ${sid} complete`);
+      },
+    }
+  );
+}
+
+await tts.destroy();
+```
+
+### Stream to File
+
+```typescript
+import { createStreamingTTS, assetModelPath } from 'react-native-sherpa-onnx/tts';
+import { writeFile } from '@dr.pogodin/react-native-fs';
+
+const tts = await createStreamingTTS({
+  modelPath: assetModelPath('models/vits-piper-en'),
+});
+
+const chunks: number[] = [];
+let sampleRate = 0;
+
+const controller = await tts.generateSpeechStream(
+  'Stream this to a file.',
+  undefined,
+  {
+    onChunk: (chunk) => {
+      chunks.push(...chunk.samples);
+      sampleRate = chunk.sampleRate;
+    },
+    onEnd: async () => {
+      // Convert float samples to WAV and save
+      const wavData = convertToWav(chunks, sampleRate);
+      await writeFile('/path/to/output.wav', wavData, 'base64');
+      console.log('Saved to file');
+    },
+  }
+);
+
+await tts.destroy();
+```
+
+### Stream with Speed Control
+
+```typescript
+import { createStreamingTTS, assetModelPath } from 'react-native-sherpa-onnx/tts';
+
+const tts = await createStreamingTTS({
+  modelPath: assetModelPath('models/vits-piper-en'),
+});
+
+const modelInfo = await tts.getModelInfo();
+await tts.startPcmPlayer(modelInfo.sampleRate, 1);
+
+await tts.generateSpeechStream(
+  'This will be spoken quickly.',
+  { speed: 1.5 },
+  {
+    onChunk: async (chunk) => {
+      await tts.writePcmChunk(chunk.samples);
+    },
+    onEnd: async () => {
+      await tts.stopPcmPlayer();
+    },
+  }
+);
+
+await tts.destroy();
+```
+
+## Error Handling
+
+```typescript
+import { createStreamingTTS, assetModelPath } from 'react-native-sherpa-onnx/tts';
+
+const tts = await createStreamingTTS({
+  modelPath: assetModelPath('models/vits-piper-en'),
+});
+
+try {
+  const controller = await tts.generateSpeechStream(
+    'Generate this text.',
+    undefined,
+    {
+      onChunk: (chunk) => {
+        console.log('Chunk:', chunk.samples.length);
+      },
+      onEnd: () => {
+        console.log('Success');
+      },
+      onError: (error) => {
+        // Handle streaming error
+        console.error('Stream error:', error.message);
+      },
+    }
+  );
+} catch (error) {
+  // Handle initialization error
+  console.error('Failed to start stream:', error);
+}
+
+await tts.destroy();
+```
+
+## See Also
+
+- [createTTS()](/api/tts/create-tts) - For batch synthesis
+- [TTS Types](/api/tts/types) - Complete type definitions
+- [Model Path Utilities](/api/model-path) - Working with model paths

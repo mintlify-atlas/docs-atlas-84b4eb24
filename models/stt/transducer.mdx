@@ -1,0 +1,267 @@
+---
+title: Zipformer & Transducer Models
+description: Encoder-decoder-joiner models for fast streaming speech recognition
+---
+
+# Zipformer & Transducer Models
+
+Zipformer and Transducer models use an encoder-decoder-joiner architecture (also known as RNN-T) and provide the best balance of speed and accuracy for streaming speech recognition.
+
+## Model Architecture
+
+Transducer models consist of three components:
+- **Encoder** (`encoder.onnx`) – Processes audio features
+- **Decoder** (`decoder.onnx`) – Language model component
+- **Joiner** (`joiner.onnx`) – Combines encoder and decoder outputs
+- **Tokens** (`tokens.txt`) – Token vocabulary
+
+This architecture enables **streaming recognition** with low latency, making it ideal for real-time applications.
+
+## Variants
+
+### Zipformer (Standard)
+
+Modern transformer-based transducer models:
+- Excellent accuracy
+- Fast inference
+- Streaming capable
+- Lower memory usage than LSTM variants
+
+### LSTM Transducer
+
+LSTM-based transducer models:
+- Same encoder-decoder-joiner layout
+- Good for streaming ASR
+- Detected automatically as `transducer` type
+- May have lower memory footprint
+
+## When to Use
+
+<CardGroup cols={2}>
+  <Card title="Real-Time Recognition" icon="microphone">
+    Live transcription from microphone with low latency and partial results
+  </Card>
+  <Card title="Voice Assistants" icon="robot">
+    Interactive voice interfaces with fast response times
+  </Card>
+  <Card title="Live Captions" icon="closed-captioning">
+    Real-time subtitle generation for videos or meetings
+  </Card>
+  <Card title="Contextual Biasing" icon="star">
+    Supports hotwords for domain-specific vocabulary (see below)
+  </Card>
+</CardGroup>
+
+## Supported Languages
+
+Available in many languages including:
+- English (multiple variants)
+- Chinese (Mandarin, Cantonese)
+- German, French, Spanish
+- Russian, Japanese, Korean
+- And many more
+
+Check the [download page](https://k2-fsa.github.io/sherpa/onnx/pretrained_models/offline-transducer/index.html) for the full list.
+
+## Performance Characteristics
+
+| Aspect | Rating | Notes |
+|--------|--------|-------|
+| **Streaming** | ✅ Excellent | Native streaming support with low latency |
+| **Accuracy** | ⭐⭐⭐⭐⭐ | Very high accuracy, especially for trained languages |
+| **Speed** | ⭐⭐⭐⭐⭐ | Fast inference, real-time capable |
+| **Memory** | ⭐⭐⭐⭐ | Moderate memory usage, int8 models available |
+| **Model Size** | Medium | Typically 50-150 MB (varies by language/variant) |
+
+## Download Links
+
+<Card title="Zipformer Models" icon="download" href="https://k2-fsa.github.io/sherpa/onnx/pretrained_models/offline-transducer/index.html">
+  Browse and download pretrained Zipformer models
+</Card>
+
+<Card title="LSTM Transducer Models" icon="download" href="https://k2-fsa.github.io/sherpa/onnx/pretrained_models/online-transducer/lstm-transducer-models.html">
+  Browse and download LSTM transducer models
+</Card>
+
+## Configuration Example
+
+### Offline Transcription
+
+```typescript
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+
+const stt = await createSTT({
+  modelPath: {
+    type: 'asset',
+    path: 'models/sherpa-onnx-zipformer-en-2023-04-01'
+  },
+  modelType: 'transducer', // or 'auto'
+  preferInt8: true,
+  numThreads: 2,
+});
+
+const result = await stt.transcribeFile('/path/to/audio.wav');
+console.log('Transcription:', result.text);
+
+await stt.destroy();
+```
+
+### Streaming Recognition
+
+```typescript
+import { createStreamingSTT } from 'react-native-sherpa-onnx/stt';
+
+const engine = await createStreamingSTT({
+  modelPath: {
+    type: 'asset',
+    path: 'models/sherpa-onnx-streaming-zipformer-en-2023-06-26'
+  },
+  modelType: 'transducer',
+  enableEndpoint: true,
+  numThreads: 2,
+});
+
+const stream = await engine.createStream();
+
+// Feed audio chunks
+const samples = getPcmSamplesFromMic(); // float[] in [-1, 1]
+const { result, isEndpoint } = await stream.processAudioChunk(samples, 16000);
+
+console.log('Partial result:', result.text);
+if (isEndpoint) {
+  console.log('Utterance ended');
+}
+
+await stream.release();
+await engine.destroy();
+```
+
+## Hotwords Support
+
+**Transducer models are the only model type that supports hotwords** (contextual biasing) for boosting domain-specific vocabulary:
+
+```typescript
+const stt = await createSTT({
+  modelPath: {
+    type: 'asset',
+    path: 'models/sherpa-onnx-zipformer-en-2023-04-01'
+  },
+  modelType: 'transducer',
+  hotwordsFile: '/path/to/hotwords.txt',
+  hotwordsScore: 1.5, // Boost factor
+});
+```
+
+**Hotwords file format** (`hotwords.txt`):
+```
+REACT NATIVE 2.5
+SHERPA ONNX 3.0
+TURBOMODULE 2.0
+```
+
+See the [Hotwords Guide](/advanced/hotwords) for more details.
+
+## Runtime Configuration
+
+You can update recognition parameters at runtime:
+
+```typescript
+await stt.setConfig({
+  decodingMethod: 'modified_beam_search',
+  maxActivePaths: 4,
+  hotwordsScore: 2.0, // Adjust hotword boost
+});
+```
+
+## Model Detection
+
+Folder name should contain `zipformer` or `transducer` for auto-detection. LSTM models may contain `lstm` in the folder name.
+
+Expected files:
+- `encoder.onnx` (or `encoder.int8.onnx`)
+- `decoder.onnx` (or `decoder.int8.onnx`)
+- `joiner.onnx` (or `joiner.int8.onnx`)
+- `tokens.txt`
+
+## Performance Tips
+
+### Use Quantized Models
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/zipformer-en' },
+  preferInt8: true, // Prefer int8 quantized variants
+});
+```
+
+Int8 models are typically:
+- 3-4x smaller
+- 2-3x faster
+- Minimal accuracy loss
+
+### Optimize Thread Count
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/zipformer-en' },
+  numThreads: 4, // Adjust based on device cores
+});
+```
+
+### Use Hardware Acceleration
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/zipformer-en' },
+  provider: 'nnapi', // Android NNAPI
+});
+```
+
+## Streaming Support
+
+<Note>
+  **Streaming**: ✅ Yes
+  
+  Transducer models have native streaming support. Use `createStreamingSTT()` for real-time recognition.
+</Note>
+
+For streaming recognition, see the [Streaming STT Guide](/api/stt/streaming-stt).
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="Model not loading">
+    - Ensure all three files are present: `encoder.onnx`, `decoder.onnx`, `joiner.onnx`
+    - Check that `tokens.txt` exists
+    - Verify folder name contains `zipformer` or `transducer` for auto-detection
+  </Accordion>
+  
+  <Accordion title="Hotwords not working">
+    - Verify `modelType` is `'transducer'` (hotwords only work with transducer models)
+    - Check hotwords file format (one phrase per line, optional boost value)
+    - Use `sttSupportsHotwords(modelType)` to verify compatibility
+  </Accordion>
+  
+  <Accordion title="Poor streaming performance">
+    - Increase `numThreads` if device has multiple cores
+    - Use `preferInt8: true` for int8 quantized models
+    - Enable hardware acceleration with `provider: 'nnapi'` or `provider: 'xnnpack'`
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Streaming STT" icon="waveform" href="/api/streaming-stt">
+    Learn about real-time recognition
+  </Card>
+  <Card title="Hotwords" icon="star" href="/features/hotwords">
+    Boost domain-specific vocabulary
+  </Card>
+  <Card title="Model Setup" icon="download" href="/model-setup">
+    How to download and bundle models
+  </Card>
+  <Card title="Execution Providers" icon="microchip" href="/execution-providers">
+    Hardware acceleration options
+  </Card>
+</CardGroup>

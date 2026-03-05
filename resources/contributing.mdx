@@ -1,0 +1,363 @@
+---
+title: Contributing
+description: How to contribute to react-native-sherpa-onnx
+icon: code-pull-request
+---
+
+Contributions are always welcome, no matter how large or small! We want this community to be friendly and respectful to each other.
+
+<Note>
+  Before contributing, please read the [code of conduct](https://github.com/XDcobra/react-native-sherpa-onnx/blob/main/CODE_OF_CONDUCT.md).
+</Note>
+
+## Development Workflow
+
+This project is a monorepo managed using [Yarn workspaces](https://yarnpkg.com/features/workspaces). It contains:
+
+- The library package in the root directory
+- An example app in the `example/` directory
+
+### Getting Started
+
+<Steps>
+  <Step title="Check Node.js version">
+    Make sure you have the correct version of Node.js installed. See the `.nvmrc` file for the version used in this project.
+
+    ```bash
+    # If using nvm
+    nvm use
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    Run `yarn` in the root directory to install dependencies for all packages:
+
+    ```bash
+    yarn
+    ```
+
+    <Warning>
+      Since the project relies on Yarn workspaces, you cannot use `npm` for development without manually migrating.
+    </Warning>
+  </Step>
+
+  <Step title="Run the example app">
+    The example app demonstrates usage of the library. You need to run it to test any changes.
+
+    ```bash
+    # Start Metro bundler
+    yarn example start
+
+    # Run on Android
+    yarn example android
+
+    # Run on iOS
+    yarn example ios
+    ```
+
+    The example app is configured to use the local version of the library, so changes to JavaScript code will be reflected without a rebuild. **Native code changes require rebuilding the example app.**
+  </Step>
+</Steps>
+
+### Development Commands
+
+The `package.json` contains various scripts for common tasks:
+
+```bash
+# Type checking
+yarn typecheck
+
+# Linting
+yarn lint
+yarn lint --fix  # Auto-fix issues
+
+# Testing
+yarn test
+
+# Start Metro for example app
+yarn example start
+
+# Run example app
+yarn example android
+yarn example ios
+```
+
+## Editing Native Code
+
+### Android
+
+To edit the Java or Kotlin files:
+
+1. Open `example/android` in Android Studio
+2. Find source files at `react-native-sherpa-onnx` under **Android** section
+
+### iOS
+
+To edit the Objective-C or Swift files:
+
+1. Open `example/ios/SherpaOnnxExample.xcworkspace` in Xcode
+2. Find source files at **Pods → Development Pods → react-native-sherpa-onnx**
+
+<Tip>
+  To verify the app is running with the new architecture, check Metro logs for:
+  ```
+  Running "SherpaOnnxExample" with {"fabric":true,"initialProps":{"concurrentRoot":true},"rootTag":1}
+  ```
+  Note the `"fabric":true` and `"concurrentRoot":true` properties.
+</Tip>
+
+## Building Android Native Libraries
+
+If you need to rebuild the sherpa-onnx Android prebuilts (e.g., after updating the submodule or to enable Qualcomm NPU):
+
+```bash
+# See detailed instructions
+cat third_party/sherpa-onnx-prebuilt/README.md
+
+# Basic build (no QNN)
+./build_sherpa_onnx.sh
+
+# Build with QNN support (requires QNN_SDK_ROOT)
+./build_sherpa_onnx.sh --qnn
+```
+
+<Note>
+  Default build does not require the QNN SDK. Use `./build_sherpa_onnx.sh --qnn` when `QNN_SDK_ROOT` is set to build with QNN support.
+</Note>
+
+## Commit Message Convention
+
+We follow the [conventional commits specification](https://www.conventionalcommits.org/en):
+
+- **`fix:`** bug fixes (e.g., fix crash due to deprecated method)
+- **`feat:`** new features (e.g., add new method to the module)
+- **`refactor:`** code refactoring (e.g., migrate from class components to hooks)
+- **`docs:`** documentation changes (e.g., add usage example for the module)
+- **`test:`** adding or updating tests (e.g., add integration tests using detox)
+- **`chore:`** tooling changes (e.g., change CI config)
+
+<Info>
+  Our pre-commit hooks verify that your commit message matches this format when committing.
+</Info>
+
+### Examples
+
+```bash
+feat: add support for streaming TTS
+fix: resolve memory leak in STT engine
+docs: update migration guide for 0.3.0
+refactor: simplify model detection logic
+test: add unit tests for model path resolution
+chore: update CI to use Node 18
+```
+
+## Sending a Pull Request
+
+<Tip>
+  **Working on your first pull request?** Learn from this free series: [How to Contribute to an Open Source Project on GitHub](https://app.egghead.io/playlists/how-to-contribute-to-an-open-source-project-on-github).
+</Tip>
+
+When you're sending a pull request:
+
+<Steps>
+  <Step title="Keep it focused">
+    Prefer small pull requests focused on one change. This makes review easier and faster.
+  </Step>
+
+  <Step title="Verify quality checks">
+    Ensure linters and tests are passing:
+
+    ```bash
+    yarn typecheck
+    yarn lint
+    yarn test
+    ```
+  </Step>
+
+  <Step title="Review documentation">
+    Check that documentation looks good and is up to date with your changes.
+  </Step>
+
+  <Step title="Follow the template">
+    Follow the pull request template when opening a pull request.
+  </Step>
+
+  <Step title="Discuss major changes first">
+    For pull requests that change the API or implementation, discuss with maintainers first by opening an issue.
+  </Step>
+</Steps>
+
+### Pull Request Checklist
+
+- [ ] Changes are focused on a single feature/fix
+- [ ] Code passes `yarn typecheck`
+- [ ] Code passes `yarn lint`
+- [ ] Tests pass with `yarn test`
+- [ ] New tests added for new functionality
+- [ ] Documentation updated if needed
+- [ ] Commit messages follow conventional commits
+- [ ] PR description explains what and why (not just how)
+
+## Publishing to npm
+
+<Warning>
+  For maintainers only.
+</Warning>
+
+We use [release-it](https://github.com/release-it/release-it) to handle releases:
+
+```bash
+yarn release
+```
+
+This handles:
+- Bumping version based on semver
+- Creating git tags
+- Creating GitHub releases
+- Publishing to npm
+
+## Code Style
+
+- **TypeScript:** All new code should be written in TypeScript
+- **Formatting:** Use Prettier (configured in the project)
+- **Linting:** Follow ESLint rules (configured in the project)
+- **Types:** Export all public types
+- **Documentation:** Add JSDoc comments for public APIs
+
+### Example
+
+```typescript
+/**
+ * Creates a new STT engine instance.
+ * 
+ * @param config - Configuration for the STT engine
+ * @returns Promise that resolves to an STT engine instance
+ * @throws {Error} If model cannot be loaded
+ * 
+ * @example
+ * ```ts
+ * const stt = await createSTT({
+ *   modelPath: { type: 'asset', path: 'models/whisper' },
+ *   modelType: 'whisper'
+ * });
+ * ```
+ */
+export async function createSTT(
+  config: SttConfig
+): Promise<SttEngine> {
+  // Implementation
+}
+```
+
+## Testing
+
+### Running Tests
+
+```bash
+# Run all tests
+yarn test
+
+# Run tests in watch mode
+yarn test --watch
+
+# Run specific test file
+yarn test src/utils.test.ts
+```
+
+### Writing Tests
+
+Add tests for:
+- New features
+- Bug fixes
+- Edge cases
+- Error handling
+
+Example:
+
+```typescript
+import { resolveModelPath } from '../modelPath';
+
+describe('resolveModelPath', () => {
+  it('resolves asset paths correctly', async () => {
+    const result = await resolveModelPath({
+      type: 'asset',
+      path: 'models/whisper'
+    });
+    
+    expect(result).toBeDefined();
+    expect(result).toContain('models/whisper');
+  });
+
+  it('throws on invalid path', async () => {
+    await expect(resolveModelPath({
+      type: 'file',
+      path: '/nonexistent/path'
+    })).rejects.toThrow();
+  });
+});
+```
+
+## Documentation
+
+### Updating Documentation
+
+Documentation is in the `docs/` directory (this documentation site).
+
+When making changes that affect the public API:
+
+1. Update relevant documentation pages
+2. Update code examples
+3. Update the migration guide if there are breaking changes
+4. Add/update API reference entries
+
+### Documentation Structure
+
+```
+docs/
+├── api-reference/          # API documentation
+├── essentials/            # Core concepts
+├── resources/             # Guides and resources
+│   ├── migration.mdx      # Migration guides
+│   ├── examples.mdx       # Code examples
+│   ├── troubleshooting.mdx # Common issues
+│   └── contributing.mdx   # This file
+└── quickstart.mdx         # Getting started guide
+```
+
+## Community
+
+### Where to Ask Questions
+
+- **GitHub Discussions:** For questions and discussions
+- **GitHub Issues:** For bug reports and feature requests
+- **Pull Requests:** For code contributions
+
+### Be Respectful
+
+- Be patient with maintainers and other contributors
+- Follow the [code of conduct](https://github.com/XDcobra/react-native-sherpa-onnx/blob/main/CODE_OF_CONDUCT.md)
+- Provide constructive feedback
+- Help others when you can
+
+## License
+
+By contributing, you agree that your contributions will be licensed under the project's MIT License.
+
+## Thank You! 🎉
+
+Thank you for contributing to react-native-sherpa-onnx! Your contributions help make speech processing accessible to React Native developers worldwide.
+
+<CardGroup cols={2}>
+  <Card title="View on GitHub" icon="github" href="https://github.com/XDcobra/react-native-sherpa-onnx">
+    Check out the source code
+  </Card>
+  <Card title="Example App" icon="mobile" href="https://github.com/XDcobra/react-native-sherpa-onnx/tree/main/example">
+    Explore the example application
+  </Card>
+  <Card title="Report Issues" icon="bug" href="https://github.com/XDcobra/react-native-sherpa-onnx/issues">
+    Found a bug? Let us know
+  </Card>
+  <Card title="Discussions" icon="comments" href="https://github.com/XDcobra/react-native-sherpa-onnx/discussions">
+    Join the community
+  </Card>
+</CardGroup>

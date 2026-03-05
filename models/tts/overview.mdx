@@ -1,0 +1,358 @@
+---
+title: TTS Models Overview
+description: Overview of all text-to-speech model types supported by react-native-sherpa-onnx
+---
+
+# Text-to-Speech Models Overview
+
+react-native-sherpa-onnx supports multiple TTS model architectures, from fast VITS models to high-quality voice cloning with Zipvoice. This guide helps you choose the right model for your application.
+
+## Model Comparison
+
+<CardGroup cols={2}>
+  <Card title="VITS Models" icon="bolt" href="/models/tts/vits">
+    Fast, high-quality TTS from Piper, Coqui, MeloTTS, and MMS
+  </Card>
+  <Card title="Matcha Models" icon="gauge-high" href="/models/tts/matcha">
+    High-quality acoustic model with vocoder for natural speech
+  </Card>
+  <Card title="Kokoro Models" icon="globe" href="/models/tts/kokoro">
+    Multi-speaker, multi-language TTS models
+  </Card>
+  <Card title="Other Models" icon="grid" href="/models/tts/other-models">
+    KittenTTS, Zipvoice (voice cloning), and Pocket (flow-matching)
+  </Card>
+</CardGroup>
+
+## Quick Comparison Table
+
+| Model Type | Streaming | Multi-Speaker | Voice Cloning | Speed | Quality |
+|------------|-----------|---------------|---------------|-------|----------|
+| **VITS** | ✅ Yes | ✅ Yes | ❌ No | Very Fast | High |
+| **Matcha** | ✅ Yes | ✅ Yes | ❌ No | Fast | Very High |
+| **Kokoro** | ✅ Yes | ✅ Yes | ❌ No | Fast | High |
+| **KittenTTS** | ✅ Yes | ✅ Yes | ❌ No | Very Fast | Good |
+| **Zipvoice** | ❌ No | ✅ Yes | ✅ Yes | Medium | Very High |
+| **Pocket** | ✅ Yes | ✅ Yes | ✅ Yes | Fast | High |
+
+## Choosing a Model
+
+### For Fast, Real-Time TTS
+
+If you need **low latency** and **streaming playback**:
+
+- **VITS (Piper)** – Fastest, excellent quality, many voices
+- **KittenTTS** – Lightweight, fast, multi-speaker
+- **Kokoro** – Fast with multi-language support
+- **Pocket** – Flow-matching with streaming and voice cloning
+
+### For Voice Cloning
+
+If you need to **clone voices** from reference audio:
+
+- **Zipvoice** – High-quality zero-shot voice cloning (encoder + decoder + vocoder)
+- **Pocket** – Flow-matching TTS with reference audio support
+
+### For High Quality
+
+If **naturalness** is your priority:
+
+- **Matcha** – High-quality acoustic model + vocoder
+- **Zipvoice** – Excellent quality with voice cloning
+- **VITS** – Great balance of speed and quality
+
+### By Language Support
+
+**English:**
+- VITS (Piper) – Many voices
+- Matcha
+- Kokoro
+- KittenTTS
+
+**Multilingual:**
+- Kokoro (multi-language)
+- MeloTTS (subset of VITS)
+- Zipvoice (Chinese + English)
+
+**Chinese:**
+- Zipvoice (excellent for Chinese)
+- VITS variants
+
+### By Device Constraints
+
+**Low-end devices / limited RAM:**
+- VITS (small, fast)
+- KittenTTS (lightweight)
+- Use `int8` quantized variants
+
+**High-end devices:**
+- Matcha (high quality)
+- Zipvoice (voice cloning, but needs memory)
+- Pocket (flow-matching)
+
+<Warning>
+  **Zipvoice Memory Requirements**: Full Zipvoice models (~605 MB) require significant RAM. On devices with **less than 8 GB RAM**, use the **int8 distill variant** (`sherpa-onnx-zipvoice-distill-int8-zh-en-emilia`, ~104 MB) instead.
+</Warning>
+
+## Model Detection
+
+The SDK automatically detects TTS model types based on file layouts:
+
+```typescript
+import { createTTS, detectTtsModel } from 'react-native-sherpa-onnx/tts';
+
+// Auto-detect model type
+const detectedInfo = await detectTtsModel({
+  type: 'asset',
+  path: 'models/vits-piper-en'
+});
+console.log(detectedInfo.modelType); // 'vits'
+
+// Create TTS with auto-detection
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper-en' },
+  modelType: 'auto', // Auto-detect
+});
+```
+
+## Performance Tips
+
+### Use Streaming TTS
+
+For low latency, use streaming generation:
+
+```typescript
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper-en' },
+  modelType: 'vits',
+});
+
+const sampleRate = await tts.getSampleRate();
+await tts.startPcmPlayer(sampleRate, 1);
+
+await tts.generateSpeechStream('Hello world', { sid: 0, speed: 1.0 }, {
+  onChunk: async (chunk) => {
+    await tts.writePcmChunk(chunk.samples); // Immediate playback
+  },
+  onEnd: async () => {
+    await tts.stopPcmPlayer();
+  },
+});
+```
+
+See the [Streaming TTS Guide](/api/streaming-tts) for more details.
+
+### Optimize Thread Count
+
+```typescript
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper' },
+  numThreads: 4, // More threads = faster generation
+});
+```
+
+### Use Hardware Acceleration
+
+```typescript
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper' },
+  provider: 'nnapi', // Android NNAPI
+  // provider: 'xnnpack', // XNNPACK
+});
+```
+
+See the [Execution Providers](/features/execution-providers) guide for more details.
+
+### Tune Model Parameters
+
+Adjust model-specific parameters for better quality or speed:
+
+```typescript
+// VITS: noise and length scale
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper' },
+  modelType: 'vits',
+  modelOptions: {
+    vits: {
+      noiseScale: 0.667,   // Lower = clearer (less variation)
+      noiseScaleW: 0.8,    // Duration noise
+      lengthScale: 1.0,    // Speech speed (< 1.0 = faster)
+    }
+  },
+});
+
+// Kokoro: length scale only
+const ttsKokoro = await createTTS({
+  modelPath: { type: 'asset', path: 'models/kokoro' },
+  modelType: 'kokoro',
+  modelOptions: {
+    kokoro: { lengthScale: 1.2 } // Slower speech
+  },
+});
+```
+
+## Streaming vs Batch Generation
+
+### Batch Generation
+
+Generate the entire audio buffer at once:
+
+```typescript
+const audio = await tts.generateSpeech('Hello world', { sid: 0, speed: 1.0 });
+console.log('Sample rate:', audio.sampleRate);
+console.log('Samples:', audio.samples.length);
+
+// Save to file
+import { saveAudioToFile } from 'react-native-sherpa-onnx/tts';
+await saveAudioToFile(audio, '/path/to/output.wav');
+```
+
+### Streaming Generation
+
+Receive incremental chunks for low-latency playback:
+
+```typescript
+await tts.generateSpeechStream('Hello world', { sid: 0, speed: 1.0 }, {
+  onChunk: (chunk) => {
+    // Play chunk.samples immediately
+    console.log('Chunk:', chunk.samples.length, 'samples');
+  },
+  onEnd: () => {
+    console.log('Generation complete');
+  },
+});
+```
+
+Streaming is recommended for:
+- Interactive voice applications
+- Long text generation
+- Low time-to-first-byte
+
+## Download Links
+
+All TTS model downloads are available from:
+
+<Card title="TTS Models Repository" icon="download" href="https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models">
+  Download VITS, Kokoro, KittenTTS, and Pocket models
+</Card>
+
+Additional specialized models:
+
+- [Matcha Models](https://k2-fsa.github.io/sherpa/onnx/tts/pretrained_models/matcha.html)
+- [Zipvoice Models](https://k2-fsa.github.io/sherpa/onnx/tts/pretrained_models/zipvoice.html)
+
+## Voice Cloning
+
+For applications that need to **synthesize speech in a custom voice**, use models that support reference audio:
+
+### Zipvoice (Full Voice Cloning)
+
+Best quality, requires full model (encoder + decoder + vocoder):
+
+```typescript
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/zipvoice-zh-en' },
+  modelType: 'zipvoice',
+});
+
+const audio = await tts.generateSpeech('Target text to speak', {
+  referenceAudio: { samples: refSamples, sampleRate: 22050 },
+  referenceText: 'Transcript of the reference recording',
+  speed: 1.0,
+});
+```
+
+<Warning>
+  **Zipvoice Distill**: Models with only encoder + decoder (no vocoder) will fail during initialization. Use full Zipvoice models with a vocoder file (e.g. `vocos_24khz.onnx`).
+</Warning>
+
+### Pocket (Flow-Matching with Reference Audio)
+
+```typescript
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/pocket' },
+  modelType: 'pocket',
+});
+
+const audio = await tts.generateSpeech('Target text', {
+  referenceAudio: { samples: refSamples, sampleRate: 22050 },
+  referenceText: 'Reference transcript',
+  numSteps: 20,
+  extra: { temperature: '0.7' },
+});
+```
+
+See the [TTS API Reference](/api/tts/create-tts) for more details on voice cloning.
+
+## Common Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Voice Assistants" icon="robot">
+    Use VITS or KittenTTS for fast, interactive responses
+  </Card>
+  <Card title="Audiobook Narration" icon="book">
+    Use Matcha or Zipvoice for high-quality, natural speech
+  </Card>
+  <Card title="Real-Time Translation" icon="language">
+    Use streaming TTS (VITS, Kokoro) for low latency
+  </Card>
+  <Card title="Custom Voice Apps" icon="microphone">
+    Use Zipvoice or Pocket for voice cloning
+  </Card>
+  <Card title="E-Learning" icon="graduation-cap">
+    Use VITS (Piper) for clear, consistent narration
+  </Card>
+  <Card title="Accessibility" icon="universal-access">
+    Use fast streaming TTS for screen readers
+  </Card>
+</CardGroup>
+
+## Multi-Speaker Models
+
+Many TTS models support multiple speakers (voices). Use the `sid` (speaker ID) parameter:
+
+```typescript
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper-multi' },
+  modelType: 'vits',
+});
+
+const numSpeakers = await tts.getNumSpeakers();
+console.log('Available speakers:', numSpeakers);
+
+// Generate with different speakers
+const audio1 = await tts.generateSpeech('Hello', { sid: 0 });
+const audio2 = await tts.generateSpeech('Hello', { sid: 1 });
+```
+
+## Sample Rate Handling
+
+Different models output different sample rates (typically 16000, 22050, or 24000 Hz). Always check the model's sample rate:
+
+```typescript
+const tts = await createTTS({ ... });
+const sampleRate = await tts.getSampleRate();
+console.log('Model sample rate:', sampleRate);
+
+// Use this for playback
+await tts.startPcmPlayer(sampleRate, 1); // mono
+```
+
+If you need a specific sample rate for your playback system, resample the audio using the [Audio Conversion API](/api/audio).
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="TTS API Reference" icon="code" href="/api/tts">
+    Detailed API documentation
+  </Card>
+  <Card title="Streaming TTS" icon="waveform" href="/api/streaming-tts">
+    Low-latency streaming generation
+  </Card>
+  <Card title="Model Setup" icon="download" href="/model-setup">
+    How to download and bundle models
+  </Card>
+  <Card title="Execution Providers" icon="microchip" href="/execution-providers">
+    Hardware acceleration options
+  </Card>
+</CardGroup>

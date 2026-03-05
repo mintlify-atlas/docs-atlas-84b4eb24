@@ -1,0 +1,188 @@
+---
+title: Diarization (Speaker Identification)
+description: Speaker diarization and identification API (coming soon)
+---
+
+<Note>
+  Speaker Diarization API is planned for a future release.
+</Note>
+
+## Overview
+
+Speaker diarization (also known as "who spoke when") is the process of partitioning an audio stream into segments according to the speaker identity. It answers the question: "Who spoke when?"
+
+## Use Cases
+
+- **Meeting transcription**: Identify different speakers in recordings
+- **Interview analysis**: Track speaker turns in conversations
+- **Call center analytics**: Distinguish between agent and customer
+- **Podcast transcription**: Label speakers in multi-person discussions
+- **Accessibility**: Improve transcription quality with speaker labels
+
+## Planned Features
+
+The Diarization API will provide:
+
+- **Speaker segmentation**: Detect when speakers change
+- **Speaker clustering**: Group segments by speaker identity
+- **Speaker counting**: Determine the number of speakers
+- **Overlap detection**: Identify when multiple speakers talk simultaneously
+- **Speaker embeddings**: Extract voice characteristics for identification
+- **Real-time diarization**: Process live audio streams
+
+## Expected Usage (Preview)
+
+```typescript
+import { createDiarization, assetModelPath } from 'react-native-sherpa-onnx/diarization';
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+
+// Create diarization engine
+const diarization = await createDiarization({
+  modelPath: assetModelPath('models/speaker-embedding-model'),
+});
+
+// Analyze audio file
+const result = await diarization.diarizeFile('/path/to/meeting.wav');
+
+console.log('Number of speakers:', result.numSpeakers);
+console.log('Speaker segments:', result.segments);
+// [
+//   { speakerId: 0, start: 0.0, end: 5.2 },
+//   { speakerId: 1, start: 5.2, end: 8.7 },
+//   { speakerId: 0, start: 8.7, end: 12.3 },
+//   ...
+// ]
+
+// Combine with transcription
+const stt = await createSTT({ /* ... */ });
+const transcription = await stt.transcribeFile('/path/to/meeting.wav');
+
+// Merge diarization with transcription
+const transcript = mergeDiarizationWithTranscription(
+  transcription,
+  result.segments
+);
+
+console.log('Transcript with speakers:');
+for (const segment of transcript) {
+  console.log(`Speaker ${segment.speakerId}: ${segment.text}`);
+}
+
+await diarization.destroy();
+await stt.destroy();
+```
+
+## Speaker Identification
+
+```typescript
+import { createDiarization } from 'react-native-sherpa-onnx/diarization';
+
+const diarization = await createDiarization({ /* ... */ });
+
+// Extract speaker embedding from enrollment audio
+const aliceEmbedding = await diarization.extractEmbedding(
+  '/path/to/alice-voice.wav'
+);
+
+const bobEmbedding = await diarization.extractEmbedding(
+  '/path/to/bob-voice.wav'
+);
+
+// Register known speakers
+await diarization.registerSpeaker('Alice', aliceEmbedding);
+await diarization.registerSpeaker('Bob', bobEmbedding);
+
+// Identify speakers in new audio
+const result = await diarization.identifySpeakers(
+  '/path/to/conversation.wav'
+);
+
+for (const segment of result.segments) {
+  console.log(`${segment.speakerName}: [${segment.start}s - ${segment.end}s]`);
+}
+// Output:
+// Alice: [0.0s - 5.2s]
+// Bob: [5.2s - 8.7s]
+// Alice: [8.7s - 12.3s]
+
+await diarization.destroy();
+```
+
+## Real-Time Diarization
+
+```typescript
+import { createDiarization } from 'react-native-sherpa-onnx/diarization';
+import { createStreamingSTT } from 'react-native-sherpa-onnx/stt';
+import { createPcmLiveStream } from 'react-native-sherpa-onnx/audio';
+
+const diarization = await createDiarization({ /* ... */ });
+const stt = await createStreamingSTT({ /* ... */ });
+const stream = await stt.createStream();
+
+const mic = createPcmLiveStream({ sampleRate: 16000 });
+
+let currentSpeaker = 0;
+
+mic.onData(async (samples, sampleRate) => {
+  // Detect speaker changes
+  const speakerResult = await diarization.detectSpeaker(
+    samples,
+    sampleRate
+  );
+  
+  if (speakerResult.speakerId !== currentSpeaker) {
+    console.log(`Speaker changed: ${currentSpeaker} -> ${speakerResult.speakerId}`);
+    currentSpeaker = speakerResult.speakerId;
+  }
+  
+  // Transcribe with speaker label
+  const { result } = await stream.processAudioChunk(samples, sampleRate);
+  if (result.text) {
+    console.log(`Speaker ${currentSpeaker}: ${result.text}`);
+  }
+});
+
+await mic.start();
+```
+
+## Model Support
+
+Planned support for speaker diarization models:
+
+- **Speaker embedding models**: Extract voice characteristics
+- **Segmentation models**: Detect speaker change points
+- **Clustering algorithms**: Group segments by speaker
+- **Custom models**: Bring your own ONNX diarization models
+
+## Output Format
+
+```typescript
+interface DiarizationResult {
+  numSpeakers: number;
+  segments: DiarizationSegment[];
+}
+
+interface DiarizationSegment {
+  speakerId: number;
+  speakerName?: string;
+  start: number;  // seconds
+  end: number;    // seconds
+  confidence?: number;
+}
+
+interface SpeakerEmbedding {
+  vector: number[];
+  dimension: number;
+}
+```
+
+## Availability
+
+This API is not yet implemented. Track progress on the [react-native-sherpa-onnx GitHub repository](https://github.com/k2-fsa/react-native-sherpa-onnx).
+
+## See Also
+
+- [STT API](/api/stt/create-stt) - Speech recognition
+- [Streaming STT](/api/stt/streaming-stt) - Real-time transcription
+- [VAD API](/api/vad) - Voice activity detection (planned)
+- [Audio Utilities](/api/audio) - Audio capture and processing

@@ -1,0 +1,338 @@
+---
+title: 'PCM Live Stream'
+description: 'Native microphone capture with resampling for live audio streaming'
+icon: 'microphone'
+---
+
+## Overview
+
+The **PCM Live Stream API** provides native microphone capture with automatic resampling that delivers PCM audio at your requested sample rate (e.g., 16 kHz for STT). Both iOS and Android capture audio at supported hardware rates (16000, 44100, or 48000 Hz), resample to your target rate, and emit Int16 mono PCM.
+
+<Info>
+  Import from: `react-native-sherpa-onnx/audio`
+</Info>
+
+### Key Features
+
+- **Native capture** with automatic resampling
+- **iOS**: Audio Queue API (`AudioQueueNewInput`) with custom linear-interpolation resampler
+- **Android**: `SherpaOnnxPcmCapture` with native resampling
+- **Float32 PCM output** in `[-1, 1]` range for direct STT processing
+- **Base64 decoding** with preallocated buffers to reduce GC pressure
+- Built-in [buffer](https://www.npmjs.com/package/buffer) package dependency
+
+<Note>
+  This API is typically used together with the [Streaming STT API](/api/stt/streaming-stt) for live transcription.
+</Note>
+
+---
+
+## API Reference
+
+### createPcmLiveStream
+
+Creates a PCM live stream from the device microphone with native capture and resampling.
+
+```typescript
+import { createPcmLiveStream } from 'react-native-sherpa-onnx/audio';
+
+const pcm = createPcmLiveStream({
+  sampleRate: 16000,
+  channelCount: 1,
+  bufferSizeFrames: 0,
+});
+```
+
+#### Parameters
+
+<ParamField path="options" type="PcmLiveStreamOptions" optional>
+  Configuration options for the PCM live stream
+  
+  <Expandable title="PcmLiveStreamOptions properties">
+    <ParamField path="sampleRate" type="number" default={16000}>
+      Target sample rate (e.g., 16000 for STT)
+    </ParamField>
+    
+    <ParamField path="channelCount" type="number" default={1}>
+      Number of audio channels (typically 1 for mono)
+    </ParamField>
+    
+    <ParamField path="bufferSizeFrames" type="number" default={0}>
+      Buffer size in frames; 0 = platform default
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+#### Returns
+
+<ResponseField name="PcmLiveStreamHandle" type="object">
+  Handle for controlling the PCM live stream
+  
+  <Expandable title="PcmLiveStreamHandle methods">
+    <ResponseField name="start" type="() => Promise<void>">
+      Starts native audio capture. Ensure microphone permission is granted first.
+    </ResponseField>
+    
+    <ResponseField name="stop" type="() => Promise<void>">
+      Stops audio capture.
+    </ResponseField>
+    
+    <ResponseField name="onData" type="(callback: (samples: number[], sampleRate: number) => void) => () => void">
+      Registers a listener for PCM audio chunks. Returns an unsubscribe function.
+      - `samples`: Float array in `[-1, 1]` range
+      - `sampleRate`: Matches the configured sample rate
+    </ResponseField>
+    
+    <ResponseField name="onError" type="(callback: (message: string) => void) => () => void">
+      Registers a listener for capture or resampling errors. Returns an unsubscribe function.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+## Quick Start: Live Transcription
+
+Minimal example showing how to start the microphone, feed PCM into a streaming STT stream, and display results.
+
+```typescript
+import { createPcmLiveStream } from 'react-native-sherpa-onnx/audio';
+import { createStreamingSTT, getOnlineTypeOrNull } from 'react-native-sherpa-onnx/stt';
+
+const SAMPLE_RATE = 16000;
+
+// 1) Create streaming STT engine and stream
+const onlineType = getOnlineTypeOrNull('transducer');
+if (!onlineType) throw new Error('Model does not support streaming');
+
+const engine = await createStreamingSTT({
+  modelPath: { type: 'asset', path: 'models/streaming-zipformer-en' },
+  modelType: onlineType,
+});
+const stream = await engine.createStream();
+
+// 2) Create PCM live stream with same sample rate as STT
+const pcm = createPcmLiveStream({ sampleRate: SAMPLE_RATE });
+
+pcm.onError((msg) => console.error('PCM error:', msg));
+
+const unsubData = pcm.onData(async (samples, sampleRate) => {
+  const { result } = await stream.processAudioChunk(samples, sampleRate);
+  if (result.text) console.log('Partial:', result.text);
+});
+
+await pcm.start();
+// ... recording in progress ...
+
+// 3) Stop and cleanup
+await pcm.stop();
+unsubData();
+await stream.release();
+await engine.destroy();
+```
+
+---
+
+## Integration with Streaming STT
+
+Typical workflow for **live transcription**:
+
+<Steps>
+  <Step title="Create streaming STT engine">
+    Initialize a streaming-capable STT model using `createStreamingSTT`. See the [Streaming STT documentation](/api/stt/streaming-stt) for details.
+    
+    ```typescript
+    const engine = await createStreamingSTT({
+      modelPath: { type: 'asset', path: 'models/streaming-zipformer-en' },
+      modelType: 'transducer',
+    });
+    const stream = await engine.createStream();
+    ```
+  </Step>
+  
+  <Step title="Create PCM live stream">
+    Create a PCM live stream with the same `sampleRate` as your STT model (usually 16000 Hz).
+    
+    ```typescript
+    const pcm = createPcmLiveStream({ sampleRate: 16000 });
+    ```
+  </Step>
+  
+  <Step title="Process audio chunks">
+    In the PCM handle's `onData` callback, pass each chunk to `stream.processAudioChunk`. Use `result.text` for partial/final transcripts and optionally check `isEndpoint` for end-of-utterance detection.
+    
+    ```typescript
+    pcm.onData(async (samples, sampleRate) => {
+      const { result, isEndpoint } = await stream.processAudioChunk(samples, sampleRate);
+      if (result.text) console.log('Transcript:', result.text);
+      if (isEndpoint) console.log('End of utterance detected');
+    });
+    ```
+  </Step>
+  
+  <Step title="Start capture">
+    Start the microphone capture.
+    
+    ```typescript
+    await pcm.start();
+    ```
+  </Step>
+  
+  <Step title="Stop and cleanup">
+    When done, stop capture, unsubscribe from events, and clean up resources.
+    
+    ```typescript
+    await pcm.stop();
+    unsubData();
+    await stream.inputFinished(); // Optional: signal end of audio
+    await stream.release();
+    await engine.destroy();
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  Process chunks serially (e.g., with a promise chain or queue) to avoid overlapping calls. The example app at `example/src/screens/stt/STTScreen.tsx` shows a complete implementation with start/stop and cleanup.
+</Tip>
+
+---
+
+## Permissions
+
+Microphone access requires proper permissions on both platforms.
+
+<AccordionGroup>
+  <Accordion title="Android Permissions">
+    Add `RECORD_AUDIO` permission to `AndroidManifest.xml`:
+    
+    ```xml
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    ```
+    
+    Request permission at runtime:
+    
+    ```typescript
+    import { PermissionsAndroid, Platform } from 'react-native';
+    
+    if (Platform.OS === 'android') {
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO
+      );
+      if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+        console.error('Microphone permission denied');
+      }
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="iOS Permissions">
+    Set `NSMicrophoneUsageDescription` in `Info.plist`:
+    
+    ```xml
+    <key>NSMicrophoneUsageDescription</key>
+    <string>This app needs microphone access for speech recognition</string>
+    ```
+    
+    iOS will automatically prompt the user for permission when `start()` is called.
+  </Accordion>
+</AccordionGroup>
+
+<Warning>
+  Without proper permissions, `start()` may fail or `onError` may fire with an error message.
+</Warning>
+
+### iOS Simulator Note
+
+On the iOS Simulator, this module uses the **Audio Queue API**, so the default input device is used. If the simulator produces silence:
+
+- Choose a valid input device in your host Mac's sound settings
+- Test on a **physical device** for real microphone input
+
+---
+
+## Other Audio Utilities
+
+The `react-native-sherpa-onnx/audio` module also provides audio file conversion utilities:
+
+### convertAudioToFormat
+
+Converts an audio file to a supported format (MP3, FLAC, WAV).
+
+```typescript
+import { convertAudioToFormat } from 'react-native-sherpa-onnx/audio';
+
+await convertAudioToFormat(
+  '/path/to/input.mp3',
+  '/path/to/output.wav',
+  'wav',
+  16000 // Optional: output sample rate
+);
+```
+
+<Note>
+  On Android, this requires FFmpeg prebuilts. See the [README](https://github.com/k2-fsa/react-native-sherpa-onnx) for configuration options.
+</Note>
+
+### convertAudioToWav16k
+
+Converts audio to WAV 16 kHz mono 16-bit PCM (ideal for offline STT).
+
+```typescript
+import { convertAudioToWav16k } from 'react-native-sherpa-onnx/audio';
+
+await convertAudioToWav16k(
+  '/path/to/input.mp3',
+  '/path/to/output.wav'
+);
+```
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Serial Processing" icon="arrow-progress">
+    Process audio chunks serially to avoid overlapping STT calls. Use promise chains or queues rather than parallel processing.
+  </Card>
+  
+  <Card title="Error Handling" icon="triangle-exclamation">
+    Always register an `onError` handler to catch capture or resampling errors. Handle permission denials gracefully.
+  </Card>
+  
+  <Card title="Resource Cleanup" icon="broom">
+    Always unsubscribe from `onData`/`onError` and call `stop()` when done. Clean up STT streams and engines to free native resources.
+  </Card>
+  
+  <Card title="Sample Rate Matching" icon="gauge">
+    Use the same sample rate for both PCM capture and STT (typically 16000 Hz) to avoid unnecessary resampling.
+  </Card>
+</CardGroup>
+
+---
+
+## Type Definitions
+
+```typescript
+export type PcmLiveStreamOptions = {
+  sampleRate?: number;      // default 16000
+  channelCount?: number;    // default 1
+  bufferSizeFrames?: number; // default 0
+};
+
+export type PcmLiveStreamHandle = {
+  start: () => Promise<void>;
+  stop: () => Promise<void>;
+  onData: (callback: (samples: number[], sampleRate: number) => void) => () => void;
+  onError: (callback: (message: string) => void) => () => void;
+};
+```
+
+Import these types:
+
+```typescript
+import {
+  createPcmLiveStream,
+  type PcmLiveStreamOptions,
+  type PcmLiveStreamHandle,
+} from 'react-native-sherpa-onnx/audio';
+```

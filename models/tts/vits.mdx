@@ -1,0 +1,389 @@
+---
+title: VITS Models
+description: Fast, high-quality TTS from Piper, Coqui, MeloTTS, and MMS
+---
+
+# VITS Models
+
+VITS (Variational Inference with adversarial learning for end-to-end Text-to-Speech) models provide **fast, high-quality** speech synthesis. They're widely used in production applications and available from multiple sources: Piper, Coqui, MeloTTS, and MMS.
+
+## Model Architecture
+
+VITS is a single-model end-to-end TTS architecture:
+- **Model** (`model.onnx` or `vits-*.onnx`) – Neural TTS model
+- **Tokens** (`tokens.txt`) – Text token vocabulary
+- **Optional**: `lexicon.txt`, `espeak-ng-data` (for phoneme-based models)
+
+## When to Use
+
+<CardGroup cols={2}>
+  <Card title="Fast TTS" icon="bolt">
+    Real-time speech generation with low latency
+  </Card>
+  <Card title="Streaming Playback" icon="waveform">
+    Incremental audio generation for interactive apps
+  </Card>
+  <Card title="Multi-Speaker" icon="users">
+    Many voices available in a single model
+  </Card>
+  <Card title="Production Apps" icon="rocket">
+    Battle-tested, widely deployed models
+  </Card>
+</CardGroup>
+
+## VITS Variants
+
+### Piper
+
+**Piper** is a collection of high-quality VITS models with excellent voice coverage:
+- Many languages and voices
+- Fast inference
+- Excellent quality
+- Multiple speaker support
+- Widely used in production
+
+### Coqui
+
+**Coqui** VITS models:
+- High-quality voices
+- Multilingual support
+- Good for expressive speech
+
+### MeloTTS
+
+**MeloTTS** models:
+- Optimized for speed
+- Multilingual (English, Spanish, Chinese, etc.)
+- Good quality with fast inference
+
+### MMS (Massively Multilingual Speech)
+
+**MMS** from Meta:
+- 1000+ languages
+- Good for low-resource languages
+- Larger models, slower inference
+
+## Supported Languages
+
+VITS models (especially Piper) support:
+- **English** (US, UK, and other accents) – Many voices
+- **Spanish, French, German, Italian, Portuguese**
+- **Chinese, Japanese, Korean**
+- **And many more** (depends on model source)
+
+Piper alone has 200+ voices across 50+ languages.
+
+## Performance Characteristics
+
+| Aspect | Rating | Notes |
+|--------|--------|-------|
+| **Streaming** | ✅ Excellent | Native streaming support |
+| **Quality** | ⭐⭐⭐⭐ | High quality, natural-sounding |
+| **Speed** | ⭐⭐⭐⭐⭐ | Very fast, real-time capable |
+| **Memory** | ⭐⭐⭐⭐ | Moderate, suitable for mobile |
+| **Model Size** | Small-Medium | Typically 10-50 MB per voice |
+
+## Download Links
+
+<Card title="VITS/Piper Models" icon="download" href="https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models">
+  Download Piper, Coqui, MeloTTS, and MMS models
+</Card>
+
+## Configuration Example
+
+### Basic TTS
+
+```typescript
+import { createTTS } from 'react-native-sherpa-onnx/tts';
+
+const tts = await createTTS({
+  modelPath: {
+    type: 'asset',
+    path: 'models/vits-piper-en_US-lessac-medium'
+  },
+  modelType: 'vits', // or 'auto'
+  numThreads: 2,
+});
+
+const audio = await tts.generateSpeech('Hello, world!');
+console.log('Generated audio:', audio.samples.length, 'samples at', audio.sampleRate, 'Hz');
+
+await tts.destroy();
+```
+
+### With Model Options
+
+```typescript
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper-en' },
+  modelType: 'vits',
+  modelOptions: {
+    vits: {
+      noiseScale: 0.667,   // Lower = clearer, less variation
+      noiseScaleW: 0.8,    // Duration noise
+      lengthScale: 1.0,    // Speech speed (< 1.0 = faster)
+    }
+  },
+  numThreads: 2,
+});
+```
+
+### Streaming TTS with Live Playback
+
+```typescript
+import { createTTS } from 'react-native-sherpa-onnx/tts';
+
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper-en' },
+  modelType: 'vits',
+});
+
+const sampleRate = await tts.getSampleRate();
+await tts.startPcmPlayer(sampleRate, 1); // mono
+
+await tts.generateSpeechStream('Hello, streaming world!', { sid: 0, speed: 1.0 }, {
+  onChunk: async (chunk) => {
+    // Play chunk immediately for low latency
+    await tts.writePcmChunk(chunk.samples);
+  },
+  onEnd: async () => {
+    await tts.stopPcmPlayer();
+  },
+  onError: ({ message }) => {
+    console.error('TTS error:', message);
+  },
+});
+
+await tts.destroy();
+```
+
+### Multi-Speaker Selection
+
+```typescript
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper-multi-speaker' },
+  modelType: 'vits',
+});
+
+const numSpeakers = await tts.getNumSpeakers();
+console.log('Available speakers:', numSpeakers);
+
+// Generate with different voices
+for (let sid = 0; sid < numSpeakers; sid++) {
+  const audio = await tts.generateSpeech('Hello', { sid, speed: 1.0 });
+  console.log(`Speaker ${sid}:`, audio.samples.length, 'samples');
+}
+
+await tts.destroy();
+```
+
+## Model Options
+
+VITS models support three tuning parameters:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `noiseScale` | `number` | 0.667 | Controls voice variation. Lower = clearer, less expressive. Range: 0.0-1.0 |
+| `noiseScaleW` | `number` | 0.8 | Duration noise. Affects timing variation. Range: 0.0-1.0 |
+| `lengthScale` | `number` | 1.0 | Speech speed. < 1.0 = faster, > 1.0 = slower |
+
+### Tuning Examples
+
+```typescript
+// Clear, fast speech (robot-like)
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper' },
+  modelType: 'vits',
+  modelOptions: {
+    vits: {
+      noiseScale: 0.3,    // Very clear
+      noiseScaleW: 0.3,   // Consistent timing
+      lengthScale: 0.8,   // Faster
+    }
+  },
+});
+
+// Expressive, natural speech
+const tts2 = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper' },
+  modelType: 'vits',
+  modelOptions: {
+    vits: {
+      noiseScale: 0.9,    // More variation
+      noiseScaleW: 0.9,   // Natural timing
+      lengthScale: 1.1,   // Slightly slower
+    }
+  },
+});
+```
+
+### Runtime Parameter Updates
+
+You can update parameters without reloading the model:
+
+```typescript
+const tts = await createTTS({ ... });
+
+// Change parameters at runtime
+await tts.updateParams({
+  modelOptions: {
+    vits: {
+      noiseScale: 0.5,
+      lengthScale: 1.2,
+    }
+  },
+});
+
+const audio = await tts.generateSpeech('Test with new parameters');
+```
+
+## Model Detection
+
+VITS models are detected automatically:
+- Folder name should contain `vits` (when used with other TTS models)
+- Files: `model.onnx` or `vits-*.onnx`, plus `tokens.txt`
+- Optional: `lexicon.txt`, `espeak-ng-data` directory
+
+## Performance Tips
+
+### Optimize Thread Count
+
+```typescript
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper' },
+  numThreads: 4, // More threads = faster generation
+});
+```
+
+### Use Streaming for Long Text
+
+For text longer than a few sentences, use streaming to start playback earlier:
+
+```typescript
+const longText = 'Lorem ipsum dolor sit amet...';
+
+await tts.generateSpeechStream(longText, { sid: 0, speed: 1.0 }, {
+  onChunk: async (chunk) => {
+    await tts.writePcmChunk(chunk.samples); // Start playing immediately
+  },
+});
+```
+
+### Hardware Acceleration
+
+```typescript
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper' },
+  provider: 'nnapi', // Android NNAPI
+  // provider: 'xnnpack', // XNNPACK for broader compatibility
+});
+```
+
+## Streaming Support
+
+<Note>
+  **Streaming**: ✅ Yes
+  
+  VITS models have excellent streaming support. Use `generateSpeechStream()` for low-latency, incremental audio generation.
+</Note>
+
+See the [Streaming TTS Guide](/api/streaming-tts) for more details.
+
+## Advantages
+
+1. **Fast Inference**: Real-time capable on mobile devices
+2. **High Quality**: Natural-sounding speech
+3. **Streaming**: Native incremental generation
+4. **Multi-Speaker**: Many voices in a single model
+5. **Wide Language Coverage**: Especially with Piper models
+6. **Small Size**: 10-50 MB per voice
+7. **Production-Ready**: Battle-tested in many applications
+
+## Limitations
+
+1. **No Voice Cloning**: Cannot synthesize custom voices from reference audio (use Zipvoice or Pocket instead)
+2. **Fixed Voices**: Speaker selection limited to model's trained voices
+3. **Prosody Control**: Limited control over emotion and emphasis
+
+## Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Voice Assistants" icon="robot">
+    Fast, responsive voice interfaces
+  </Card>
+  <Card title="Screen Readers" icon="universal-access">
+    Accessibility applications with streaming TTS
+  </Card>
+  <Card title="E-Learning" icon="graduation-cap">
+    Clear narration for educational content
+  </Card>
+  <Card title="Audiobooks" icon="book">
+    Long-form audio generation with streaming
+  </Card>
+  <Card title="Navigation" icon="map">
+    Real-time turn-by-turn directions
+  </Card>
+  <Card title="Notifications" icon="bell">
+    Short audio alerts and messages
+  </Card>
+</CardGroup>
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="Model not loading">
+    - Verify `model.onnx` (or `vits-*.onnx`) and `tokens.txt` are present
+    - Check that model path is correct
+    - Ensure sufficient device memory
+    - For Piper models, ensure `espeak-ng-data` directory is included if required
+  </Accordion>
+  
+  <Accordion title="Poor audio quality">
+    - Adjust `noiseScale` (lower for clearer speech)
+    - Try different `lengthScale` values
+    - Ensure correct sample rate for playback
+    - Check if audio is being resampled incorrectly
+  </Accordion>
+  
+  <Accordion title="Slow generation">
+    - Increase `numThreads` on multi-core devices
+    - Use hardware acceleration (`provider: 'nnapi'` or `'xnnpack'`)
+    - Use smaller/faster VITS models
+    - Ensure no other heavy apps are running
+  </Accordion>
+  
+  <Accordion title="Streaming audio stutters">
+    - Ensure `onChunk` handler is lightweight
+    - Write chunks to native player immediately (don't buffer in JS)
+    - Increase buffer sizes in native audio player
+    - Use fewer threads to reduce chunk latency
+  </Accordion>
+</AccordionGroup>
+
+## Comparison with Other Models
+
+| Feature | VITS | Matcha | Zipvoice | Kokoro |
+|---------|------|--------|----------|--------|
+| **Speed** | Very Fast | Fast | Medium | Fast |
+| **Quality** | High | Very High | Very High | High |
+| **Streaming** | Yes | Yes | No | Yes |
+| **Voice Cloning** | No | No | Yes | No |
+| **Model Size** | Small | Medium | Large | Small |
+| **Languages** | Many | Limited | Limited | Multi |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="TTS API" icon="code" href="/api/tts">
+    Detailed API documentation
+  </Card>
+  <Card title="Streaming TTS" icon="waveform" href="/api/streaming-tts">
+    Low-latency streaming guide
+  </Card>
+  <Card title="Model Setup" icon="download" href="/model-setup">
+    How to download and bundle models
+  </Card>
+  <Card title="Execution Providers" icon="microchip" href="/execution-providers">
+    Hardware acceleration options
+  </Card>
+</CardGroup>

@@ -1,0 +1,682 @@
+---
+title: 'Streaming TTS'
+description: 'Low-latency streaming speech generation with chunk callbacks'
+icon: 'waveform'
+---
+
+## Overview
+
+Streaming TTS generates speech incrementally, emitting audio chunks as they are produced. This enables:
+
+- **Lower latency**: Start playing audio before generation completes
+- **Real-time playback**: Play while generating for interactive experiences
+- **Progress tracking**: Show generation progress to users
+- **Memory efficiency**: Process long texts without loading all audio into memory
+
+**Use streaming TTS when:**
+- You need low time-to-first-audio
+- You're building interactive voice assistants
+- You want to play audio while it's being generated
+- You're processing very long texts
+
+**Use batch TTS when:**
+- You need the complete audio buffer
+- You're saving to files
+- You need timestamps (use `generateSpeechWithTimestamps`)
+- Voice cloning with Zipvoice (streaming + voice cloning not supported for Zipvoice)
+
+## Quick Start
+
+```typescript
+import { createStreamingTTS } from 'react-native-sherpa-onnx/tts';
+
+// Create streaming TTS engine
+const tts = await createStreamingTTS({
+  modelPath: { type: 'asset', path: 'models/sherpa-onnx-vits-piper-en' },
+  modelType: 'vits',
+});
+
+// Generate with streaming callbacks
+const controller = await tts.generateSpeechStream(
+  'Hello, this is streaming text-to-speech.',
+  { sid: 0, speed: 1.0 },
+  {
+    onChunk: (chunk) => {
+      console.log('Received chunk:', chunk.samples.length, 'samples');
+      console.log('Progress:', (chunk.progress * 100).toFixed(1), '%');
+      console.log('Is final:', chunk.isFinal);
+      
+      // Play chunk immediately
+      playPcmSamples(chunk.samples, chunk.sampleRate);
+    },
+    onEnd: (event) => {
+      if (event.cancelled) {
+        console.log('Generation was cancelled');
+      } else {
+        console.log('Generation complete');
+      }
+    },
+    onError: (event) => {
+      console.error('TTS error:', event.message);
+    },
+  }
+);
+
+// Optional: cancel generation
+// await controller.cancel();
+
+// Clean up
+await tts.destroy();
+```
+
+## API Reference
+
+### createStreamingTTS(options)
+
+Creates a streaming TTS engine.
+
+```typescript src/tts/streaming.ts
+export async function createStreamingTTS(
+  options: TTSInitializeOptions | ModelPathConfig
+): Promise<StreamingTtsEngine>;
+```
+
+Accepts the same options as `createTTS()`. See [Text-to-Speech](/features/text-to-speech) for details.
+
+<Note>
+**Streaming vs Batch Engines:**
+- Use `createStreamingTTS()` for streaming generation (`generateSpeechStream`)
+- Use `createTTS()` for batch generation (`generateSpeech`, `generateSpeechWithTimestamps`)
+
+They share the same native TTS instance but provide different JS interfaces.
+</Note>
+
+### StreamingTtsEngine: generateSpeechStream(text, options, handlers)
+
+Starts streaming generation with chunk callbacks.
+
+```typescript
+const controller = await tts.generateSpeechStream(
+  text,
+  options,
+  handlers
+);
+```
+
+**Parameters:**
+
+<ParamField path="text" type="string" required>
+  Text to synthesize.
+</ParamField>
+
+<ParamField path="options" type="TtsGenerationOptions">
+  Generation options (same as batch TTS):
+  - `sid`: Speaker ID (default: 0)
+  - `speed`: Speech speed multiplier (default: 1.0)
+  - `silenceScale`: Silence scale
+  - `referenceAudio`: Reference audio for voice cloning (Pocket; not supported for Zipvoice streaming)
+  - `referenceText`: Transcript of reference audio
+  - `numSteps`: Flow-matching steps
+  - `extra`: Model-specific options
+</ParamField>
+
+<ParamField path="handlers" type="TtsStreamHandlers" required>
+  Callbacks for chunks, completion, and errors:
+  - `onChunk?: (chunk: TtsStreamChunk) => void`
+  - `onEnd?: (event: TtsStreamEnd) => void`
+  - `onError?: (event: TtsStreamError) => void`
+</ParamField>
+
+**Returns:** `Promise<TtsStreamController>` - Controller to cancel or unsubscribe.
+
+<Warning>
+**Only one stream per engine** can be active at a time. Starting another stream before the first finishes will reject with `TTS_STREAM_ERROR`.
+</Warning>
+
+### TtsStreamHandlers
+
+Callbacks for streaming events.
+
+#### onChunk(chunk)
+
+Called for each generated audio chunk.
+
+```typescript
+onChunk: (chunk) => {
+  // chunk.samples: number[] - Float PCM in [-1, 1]
+  // chunk.sampleRate: number - Sample rate in Hz
+  // chunk.progress: number - Progress 0..1
+  // chunk.isFinal: boolean - True for last chunk
+  
+  playPcmSamples(chunk.samples, chunk.sampleRate);
+}
+```
+
+**TtsStreamChunk:**
+
+```typescript
+interface TtsStreamChunk {
+  instanceId?: string;  // Engine instance (for routing)
+  requestId?: string;   // Request ID (for concurrent streams)
+  samples: number[];    // Float PCM samples [-1, 1]
+  sampleRate: number;   // Sample rate in Hz
+  progress: number;     // Progress 0..1
+  isFinal: boolean;     // True for last chunk
+}
+```
+
+<Tip>
+**Keep onChunk lightweight.** Forward audio to native playback quickly. Heavy processing can cause stuttering.
+</Tip>
+
+#### onEnd(event)
+
+Called when generation finishes or is cancelled. Listeners are auto-removed after this.
+
+```typescript
+onEnd: (event) => {
+  if (event.cancelled) {
+    console.log('User cancelled');
+  } else {
+    console.log('Generation complete');
+  }
+}
+```
+
+**TtsStreamEnd:**
+
+```typescript
+interface TtsStreamEnd {
+  instanceId?: string;
+  requestId?: string;
+  cancelled: boolean;  // True if cancelled
+}
+```
+
+#### onError(event)
+
+Called on generation errors. Listeners are auto-removed after this.
+
+```typescript
+onError: (event) => {
+  console.error('TTS error:', event.message);
+}
+```
+
+**TtsStreamError:**
+
+```typescript
+interface TtsStreamError {
+  instanceId?: string;
+  requestId?: string;
+  message: string;
+}
+```
+
+### TtsStreamController
+
+Returned by `generateSpeechStream()`. Use to cancel or unsubscribe.
+
+```typescript
+interface TtsStreamController {
+  cancel(): Promise<void>;      // Stop generation and unsubscribe
+  unsubscribe(): void;          // Remove listeners only
+}
+```
+
+**Methods:**
+
+- `cancel()`: Stops generation and removes event listeners
+- `unsubscribe()`: Removes event listeners only (call after completion if you didn't wait for end/error)
+
+<Note>
+Listeners are **automatically removed** when `onEnd` or `onError` is called. Call `unsubscribe()` manually only if you discard the controller early (e.g., navigation away).
+</Note>
+
+### StreamingTtsEngine: cancelSpeechStream()
+
+Cancel the currently active stream.
+
+```typescript
+await tts.cancelSpeechStream();
+```
+
+## Native PCM Player
+
+The SDK provides a native PCM player for low-latency audio playback.
+
+### startPcmPlayer(sampleRate, channels)
+
+Start the native PCM player.
+
+```typescript
+const sampleRate = await tts.getSampleRate();
+await tts.startPcmPlayer(sampleRate, 1);  // Mono
+```
+
+### writePcmChunk(samples)
+
+Write PCM samples to the player. Call from `onChunk`.
+
+```typescript
+onChunk: async (chunk) => {
+  await tts.writePcmChunk(chunk.samples);
+}
+```
+
+<Warning>
+`writePcmChunk()` expects float PCM samples in `[-1.0, 1.0]`. Values outside this range will clip.
+</Warning>
+
+### stopPcmPlayer()
+
+Stop and release the PCM player.
+
+```typescript
+await tts.stopPcmPlayer();
+```
+
+## Complete Example: Streaming with Native Playback
+
+```typescript
+import { createStreamingTTS } from 'react-native-sherpa-onnx/tts';
+
+// Create engine
+const tts = await createStreamingTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper-en' },
+  numThreads: 2,
+});
+
+// Start native player
+const sampleRate = await tts.getSampleRate();
+await tts.startPcmPlayer(sampleRate, 1);
+
+// Accumulate chunks for optional save
+const allChunks: number[] = [];
+
+// Start streaming generation
+const controller = await tts.generateSpeechStream(
+  'This is a longer text that will be generated in chunks.',
+  { speed: 1.0 },
+  {
+    onChunk: async (chunk) => {
+      // Play immediately
+      if (chunk.samples.length > 0) {
+        await tts.writePcmChunk(chunk.samples);
+      }
+      
+      // Optionally accumulate
+      allChunks.push(...chunk.samples);
+      
+      // Update UI
+      console.log('Progress:', (chunk.progress * 100).toFixed(1) + '%');
+    },
+    onEnd: async (event) => {
+      await tts.stopPcmPlayer();
+      
+      if (!event.cancelled && allChunks.length > 0) {
+        // Optionally save accumulated audio
+        const audio = { samples: allChunks, sampleRate };
+        await saveAudioToFile(audio, '/path/output.wav');
+      }
+    },
+    onError: async (event) => {
+      await tts.stopPcmPlayer();
+      console.error('Error:', event.message);
+    },
+  }
+);
+
+// To cancel mid-generation:
+// await controller.cancel();
+
+// Later: clean up engine
+await tts.destroy();
+```
+
+## Voice Cloning with Streaming
+
+### Pocket TTS (Supported)
+
+Pocket TTS supports streaming with voice cloning:
+
+```typescript
+const tts = await createStreamingTTS({
+  modelPath: { type: 'asset', path: 'models/pocket-tts' },
+  modelType: 'pocket',
+});
+
+const refAudio = loadReferenceAudio();  // Your function
+
+const controller = await tts.generateSpeechStream(
+  'Target text to speak in reference voice.',
+  {
+    referenceAudio: {
+      samples: refAudio.samples,
+      sampleRate: 22050,
+    },
+    referenceText: 'Transcript of reference audio.',
+    numSteps: 20,
+    speed: 1.0,
+    extra: {
+      temperature: '0.7',
+      chunk_size: '15',
+    },
+  },
+  {
+    onChunk: (chunk) => playPcmSamples(chunk.samples, chunk.sampleRate),
+    onEnd: () => console.log('Done'),
+    onError: (e) => console.error(e.message),
+  }
+);
+```
+
+### Zipvoice (Not Supported)
+
+<Warning>
+**Zipvoice does not support streaming with voice cloning.** Use batch mode (`createTTS()` + `generateSpeech()`) for voice cloning with Zipvoice.
+
+```typescript
+import { createTTS } from 'react-native-sherpa-onnx/tts';
+
+const tts = await createTTS({
+  modelPath: { type: 'asset', path: 'models/zipvoice-zh-en' },
+  modelType: 'zipvoice',
+});
+
+const audio = await tts.generateSpeech('Text', {
+  referenceAudio: { samples: refSamples, sampleRate: 24000 },
+  referenceText: 'Transcript',
+});
+```
+</Warning>
+
+## Multiple Requests
+
+Only **one stream** can be active per engine at a time.
+
+### Sequential Requests
+
+Wait for the previous stream to finish:
+
+```typescript
+const tts = await createStreamingTTS({ /* ... */ });
+
+// First request
+await tts.generateSpeechStream('First text', undefined, handlers);
+// Wait for onEnd callback
+
+// Second request
+await tts.generateSpeechStream('Second text', undefined, handlers);
+```
+
+### Concurrent Requests (Multiple Engines)
+
+Create multiple engines for concurrent streams:
+
+```typescript
+const tts1 = await createStreamingTTS({ /* ... */ });
+const tts2 = await createStreamingTTS({ /* ... */ });
+
+// Both can run concurrently
+const controller1 = await tts1.generateSpeechStream('Text 1', undefined, handlers1);
+const controller2 = await tts2.generateSpeechStream('Text 2', undefined, handlers2);
+
+// Events are tagged with instanceId and requestId for routing
+```
+
+## Cancellation
+
+### Cancel via Controller
+
+```typescript
+const controller = await tts.generateSpeechStream(text, undefined, handlers);
+
+// User taps "Stop" button
+await controller.cancel();  // Stops generation and unsubscribes
+```
+
+### Cancel via Engine
+
+```typescript
+await tts.cancelSpeechStream();
+```
+
+## Recording Streamed Audio
+
+Accumulate chunks to save the complete audio:
+
+```typescript
+const chunks: number[] = [];
+let sampleRate = 0;
+
+const controller = await tts.generateSpeechStream(
+  longText,
+  { speed: 1.0 },
+  {
+    onChunk: (chunk) => {
+      sampleRate = chunk.sampleRate;
+      chunks.push(...chunk.samples);
+      
+      // Optionally play while recording
+      playPcmSamples(chunk.samples, chunk.sampleRate);
+    },
+    onEnd: async () => {
+      if (chunks.length > 0) {
+        const audio = { samples: chunks, sampleRate };
+        await saveAudioToFile(audio, '/path/output.wav');
+      }
+    },
+    onError: () => {
+      // Handle error
+    },
+  }
+);
+```
+
+<Warning>
+**Memory Warning:** Accumulating very long audio in JS can exhaust memory. For very long texts, consider:
+- Saving chunks incrementally to native storage
+- Splitting long texts into smaller segments
+- Using batch mode with file output
+</Warning>
+
+## Performance Tips
+
+### Reduce Latency
+
+1. **Use native PCM player** (avoid JS audio bridge overhead)
+2. **Keep onChunk lightweight** (no heavy processing)
+3. **Increase numThreads** for faster generation
+4. **Use hardware acceleration** when available
+
+```typescript
+const tts = await createStreamingTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper-en' },
+  numThreads: 4,
+  provider: 'coreml',  // iOS: Core ML
+});
+```
+
+### Balance Chunk Size
+
+The `maxNumSentences` option controls chunk size:
+
+```typescript
+const tts = await createStreamingTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper-en' },
+  maxNumSentences: 2,  // Larger chunks = fewer callbacks
+});
+```
+
+- **Smaller chunks** (1 sentence): Lower latency, more callbacks
+- **Larger chunks** (2+ sentences): Higher latency, fewer callbacks
+
+### Avoid Memory Issues
+
+- Don't accumulate all chunks for very long sessions
+- Use native-side streaming-to-file if possible
+- Split long texts into smaller generation requests
+
+## Common Use Cases
+
+### Voice Assistant
+
+```typescript
+const tts = await createStreamingTTS({
+  modelPath: { type: 'asset', path: 'models/vits-piper-en' },
+});
+
+const sampleRate = await tts.getSampleRate();
+await tts.startPcmPlayer(sampleRate, 1);
+
+async function speak(text: string) {
+  const controller = await tts.generateSpeechStream(
+    text,
+    { speed: 1.0 },
+    {
+      onChunk: async (chunk) => {
+        await tts.writePcmChunk(chunk.samples);
+      },
+      onEnd: () => {
+        console.log('Finished speaking');
+      },
+      onError: (e) => {
+        console.error('Speech error:', e.message);
+      },
+    }
+  );
+  
+  return controller;  // Allow caller to cancel
+}
+
+// Use
+const controller = await speak('Hello, how can I help you?');
+
+// Cancel if needed
+// await controller.cancel();
+```
+
+### Progress Indicator
+
+```typescript
+const [progress, setProgress] = useState(0);
+
+const controller = await tts.generateSpeechStream(
+  longText,
+  undefined,
+  {
+    onChunk: (chunk) => {
+      setProgress(chunk.progress * 100);
+      playPcmSamples(chunk.samples, chunk.sampleRate);
+    },
+    onEnd: () => {
+      setProgress(100);
+    },
+    onError: () => {
+      setProgress(0);
+    },
+  }
+);
+
+// UI: <ProgressBar progress={progress} />
+```
+
+### Text-to-Speech Button with Cancel
+
+```typescript
+const [isSpeaking, setIsSpeaking] = useState(false);
+const [controller, setController] = useState<TtsStreamController | null>(null);
+
+async function handleSpeak() {
+  if (isSpeaking && controller) {
+    // Cancel
+    await controller.cancel();
+    await tts.stopPcmPlayer();
+    setIsSpeaking(false);
+    setController(null);
+  } else {
+    // Start
+    setIsSpeaking(true);
+    const sampleRate = await tts.getSampleRate();
+    await tts.startPcmPlayer(sampleRate, 1);
+    
+    const ctrl = await tts.generateSpeechStream(
+      text,
+      { speed: 1.0 },
+      {
+        onChunk: async (chunk) => {
+          await tts.writePcmChunk(chunk.samples);
+        },
+        onEnd: async () => {
+          await tts.stopPcmPlayer();
+          setIsSpeaking(false);
+          setController(null);
+        },
+        onError: async () => {
+          await tts.stopPcmPlayer();
+          setIsSpeaking(false);
+          setController(null);
+        },
+      }
+    );
+    
+    setController(ctrl);
+  }
+}
+
+// UI: <Button title={isSpeaking ? 'Stop' : 'Speak'} onPress={handleSpeak} />
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Error: TTS_STREAM_ERROR (another stream active)">
+    Only one stream per engine can be active. Wait for the previous stream to finish or cancel it:
+    ```typescript
+    await previousController.cancel();
+    // Now start new stream
+    ```
+  </Accordion>
+
+  <Accordion title="Audio stuttering or choppy">
+    - Keep `onChunk` lightweight (avoid heavy processing)
+    - Use native PCM player instead of JS audio APIs
+    - Increase `numThreads` for faster generation
+    - Reduce audio bridge overhead by writing larger chunks
+  </Accordion>
+
+  <Accordion title="High latency (slow time-to-first-audio)">
+    - Use hardware acceleration (`provider: 'coreml'` on iOS)
+    - Increase `numThreads`
+    - Reduce `maxNumSentences` for smaller chunks
+  </Accordion>
+
+  <Accordion title="Out of memory with long texts">
+    - Don't accumulate all chunks in JS
+    - Split long texts into smaller requests
+    - Use batch mode for very long texts
+  </Accordion>
+
+  <Accordion title="Voice cloning not working in streaming">
+    - **Pocket TTS**: Voice cloning is supported in streaming
+    - **Zipvoice**: Voice cloning is **not** supported in streaming; use batch mode (`createTTS()` + `generateSpeech()`)
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Text-to-Speech" icon="volume" href="/features/text-to-speech">
+    Batch TTS generation and configuration
+  </Card>
+  <Card title="Model Setup" icon="folder" href="/features/model-setup">
+    Learn how to bundle and load models
+  </Card>
+  <Card title="Speech-to-Text" icon="microphone" href="/features/speech-to-text">
+    Transcribe audio to text
+  </Card>
+  <Card title="Streaming STT" icon="signal-stream" href="/features/streaming-stt">
+    Real-time speech recognition
+  </Card>
+</CardGroup>

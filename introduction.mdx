@@ -1,0 +1,204 @@
+---
+title: Introduction
+description: Overview of react-native-sherpa-onnx - offline and streaming speech processing for React Native
+---
+
+# Introduction to react-native-sherpa-onnx
+
+A React Native TurboModule that provides **offline and streaming speech processing** capabilities using [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx). Process speech entirely on-device with no internet connection required.
+
+## What is react-native-sherpa-onnx?
+
+react-native-sherpa-onnx brings powerful speech processing capabilities to React Native applications:
+
+- **Speech-to-Text (STT)** - Convert audio to text offline
+- **Text-to-Speech (TTS)** - Generate natural-sounding speech from text
+- **Streaming Recognition** - Real-time speech recognition with partial results
+- **Streaming TTS** - Low-latency incremental speech generation
+- **100% Offline** - All processing happens on-device with no internet required
+
+## Key Features
+
+### Offline Speech-to-Text
+
+Transcribe audio files or samples without an internet connection. Supports multiple model architectures:
+
+- **Zipformer/Transducer** - Balanced speed and accuracy
+- **Whisper** - Multilingual, zero-shot capabilities
+- **Paraformer** - Fast non-autoregressive ASR
+- **NeMo CTC** - Excellent for English and streaming
+- **SenseVoice** - Emotion and punctuation detection
+- **Moonshine** - Lightweight streaming-capable models
+- And many more (see [Supported Models](#supported-models))
+
+### Online (Streaming) Speech-to-Text
+
+Real-time recognition from microphone or audio streams:
+
+- Partial results as the user speaks
+- Endpoint detection for natural pauses
+- Low latency for responsive UX
+- Use streaming-capable models (transducer, paraformer, nemo_ctc, tone_ctc)
+
+### Text-to-Speech
+
+Generate high-quality speech from text:
+
+- **VITS** - Fast, high-quality (Piper, Coqui, MeloTTS)
+- **Matcha** - High-quality acoustic model with vocoder
+- **Kokoro** - Multi-speaker, multi-language
+- **KittenTTS** - Lightweight multi-speaker
+- **Zipvoice** - Voice cloning support
+
+### Streaming Text-to-Speech
+
+Incremental speech generation for low time-to-first-byte:
+
+- Start playback while generating
+- Ideal for long texts
+- Chunk-based callbacks for streaming audio
+
+### Hardware Acceleration
+
+Optimize performance with execution providers:
+
+- **Android**: CPU, NNAPI, XNNPACK, QNN (Qualcomm)
+- **iOS**: CPU, Core ML, Apple Neural Engine
+- Automatic detection and support checking
+
+### Flexible Model Loading
+
+- **Asset models** - Bundle models in your app
+- **File system models** - Download and use external models
+- **Play Asset Delivery (PAD)** - Android on-demand model delivery
+- **Automatic detection** - Auto-detect model types
+
+### Developer Experience
+
+<CardGroup cols={2}>
+  <Card title="TypeScript Support" icon="code">
+    Full type definitions for all APIs
+  </Card>
+  <Card title="Instance-Based API" icon="cube">
+    Multiple STT/TTS engines in parallel
+  </Card>
+  <Card title="Model Quantization" icon="compress">
+    Automatic int8 model detection
+  </Card>
+  <Card title="Cross-Platform" icon="mobile">
+    iOS and Android production ready
+  </Card>
+</CardGroup>
+
+## Supported Models
+
+### Speech-to-Text Models
+
+| Model Type | Use Case | Streaming Support |
+|------------|----------|-------------------|
+| Zipformer/Transducer | Balanced speed/accuracy | ✅ Yes |
+| Whisper | Multilingual, zero-shot | ❌ Offline only |
+| Paraformer | Fast inference | ✅ Yes |
+| NeMo CTC | English, streaming | ✅ Yes |
+| SenseVoice | Emotion detection | ❌ Offline only |
+| Moonshine | Lightweight streaming | ✅ Yes |
+| Tone CTC (t-one) | Lightweight CTC | ✅ Yes |
+
+See the complete list in [Model Types](/models/stt/overview).
+
+### Text-to-Speech Models
+
+| Model Type | Description |
+|------------|-------------|
+| VITS | Fast, high-quality (Piper, Coqui, MeloTTS) |
+| Matcha | Acoustic model + vocoder |
+| Kokoro | Multi-speaker, multi-language |
+| KittenTTS | Lightweight multi-speaker |
+| Zipvoice | Voice cloning with encoder/decoder |
+| Pocket | Flow-matching TTS |
+
+## Platform Support
+
+| Platform | Status | Notes |
+|----------|--------|-------|
+| **Android** | ✅ Production Ready | API 24+ (Android 7.0+) |
+| **iOS** | ✅ Production Ready | iOS 13.0+ |
+
+## Requirements
+
+- **React Native** >= 0.70
+- **Android** API 24+ (Android 7.0+)
+- **iOS** 13.0+
+- **@dr.pogodin/react-native-fs** (peer dependency for file operations)
+
+## Architecture
+
+react-native-sherpa-onnx uses React Native TurboModules for high-performance native integration:
+
+```
+┌─────────────────────────────────────┐
+│   React Native JavaScript Layer     │
+│  (TypeScript API + Type Safety)     │
+└──────────────┬──────────────────────┘
+               │ TurboModule Bridge
+┌──────────────▼──────────────────────┐
+│      Native Module (Obj-C/Kotlin)   │
+│   Instance Management + Threading   │
+└──────────────┬──────────────────────┘
+               │ C++ API
+┌──────────────▼──────────────────────┐
+│         sherpa-onnx (C++)           │
+│    ONNX Runtime + Model Inference   │
+└─────────────────────────────────────┘
+```
+
+## Why Choose react-native-sherpa-onnx?
+
+<AccordionGroup>
+  <Accordion title="Privacy & Offline Capability">
+    All processing happens on-device. No data leaves the user's phone, and no internet connection is required. Perfect for privacy-sensitive applications.
+  </Accordion>
+  
+  <Accordion title="Cost Effective">
+    No API calls, no per-request costs, no rate limits. Once the model is bundled or downloaded, transcription and synthesis are completely free.
+  </Accordion>
+  
+  <Accordion title="Low Latency">
+    Direct on-device processing means no network round-trips. Streaming STT provides partial results in real-time, and streaming TTS can start playback within milliseconds.
+  </Accordion>
+  
+  <Accordion title="Production Ready">
+    Battle-tested in production apps with CI/CD automation, comprehensive documentation, and active maintenance.
+  </Accordion>
+</AccordionGroup>
+
+## Example Use Cases
+
+- **Voice assistants** - Offline voice commands and responses
+- **Transcription apps** - Convert meetings, lectures, or interviews to text
+- **Accessibility tools** - Text-to-speech for visually impaired users
+- **Language learning** - Real-time pronunciation feedback
+- **Voice notes** - Convert voice memos to searchable text
+- **Healthcare apps** - Medical transcription with privacy compliance
+- **Navigation apps** - Turn-by-turn voice guidance
+
+## What's Next?
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install the library and set up iOS/Android
+  </Card>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get up and running with your first example
+  </Card>
+  <Card title="STT Guide" icon="microphone" href="/stt/overview">
+    Learn about speech-to-text features
+  </Card>
+  <Card title="TTS Guide" icon="volume-high" href="/tts/overview">
+    Explore text-to-speech capabilities
+  </Card>
+</CardGroup>
+
+<Note>
+  **Breaking changes in v0.3.0**: If you're upgrading from 0.2.x, see the [Migration Guide](/resources/migration) for important API changes.
+</Note>

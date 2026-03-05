@@ -1,0 +1,250 @@
+---
+title: Paraformer Models
+description: Non-autoregressive ASR models for fast and accurate transcription
+---
+
+# Paraformer Models
+
+Paraformer is a **non-autoregressive** speech recognition model that offers excellent speed and accuracy for both offline and streaming use cases.
+
+## Model Architecture
+
+Paraformer uses a single-model architecture:
+- **Model** (`model.onnx` or `model.int8.onnx`) – Single neural network
+- **Tokens** (`tokens.txt`) – Token vocabulary
+
+Unlike transducer models, Paraformer doesn't require separate encoder, decoder, and joiner components, making it simpler to deploy.
+
+## When to Use
+
+<CardGroup cols={2}>
+  <Card title="Fast Batch Processing" icon="gauge-high">
+    Excellent for transcribing multiple audio files quickly
+  </Card>
+  <Card title="Chinese Speech" icon="language">
+    Outstanding accuracy for Mandarin Chinese
+  </Card>
+  <Card title="Streaming Recognition" icon="microphone">
+    Supports streaming mode for real-time transcription
+  </Card>
+  <Card title="Resource-Constrained Devices" icon="mobile">
+    Single-model architecture uses less memory
+  </Card>
+</CardGroup>
+
+## Supported Languages
+
+Paraformer models are primarily available for:
+- **Chinese (Mandarin)** – Excellent accuracy, widely used
+- **English** – Some bilingual variants available
+- **Chinese + English** – Bilingual models
+
+Paraformer models excel at Chinese speech recognition and are widely adopted in Chinese applications.
+
+## Performance Characteristics
+
+| Aspect | Rating | Notes |
+|--------|--------|-------|
+| **Streaming** | ✅ Supported | Streaming-capable with good latency |
+| **Accuracy** | ⭐⭐⭐⭐⭐ | Very high accuracy, especially for Chinese |
+| **Speed** | ⭐⭐⭐⭐⭐ | Fast non-autoregressive inference |
+| **Memory** | ⭐⭐⭐⭐⭐ | Low memory usage (single model) |
+| **Model Size** | Small-Medium | Typically 50-200 MB depending on variant |
+
+## Download Links
+
+<Card title="Paraformer Models" icon="download" href="https://k2-fsa.github.io/sherpa/onnx/pretrained_models/offline-paraformer/index.html">
+  Browse and download pretrained Paraformer models
+</Card>
+
+## Configuration Example
+
+### Offline Transcription
+
+```typescript
+import { createSTT } from 'react-native-sherpa-onnx/stt';
+
+const stt = await createSTT({
+  modelPath: {
+    type: 'asset',
+    path: 'models/sherpa-onnx-paraformer-zh-2023-03-28'
+  },
+  modelType: 'paraformer', // or 'auto'
+  preferInt8: true,
+  numThreads: 2,
+});
+
+const result = await stt.transcribeFile('/path/to/audio.wav');
+console.log('Transcription:', result.text);
+console.log('Tokens:', result.tokens);
+
+await stt.destroy();
+```
+
+### Transcribe from Samples
+
+```typescript
+const samples = getPcmSamples(); // float[] in [-1, 1]
+const result = await stt.transcribeSamples(samples, 16000);
+console.log('Result:', result.text);
+```
+
+### Streaming Recognition
+
+```typescript
+import { createStreamingSTT } from 'react-native-sherpa-onnx/stt';
+
+const engine = await createStreamingSTT({
+  modelPath: {
+    type: 'asset',
+    path: 'models/sherpa-onnx-streaming-paraformer-zh'
+  },
+  modelType: 'paraformer',
+  enableEndpoint: true,
+});
+
+const stream = await engine.createStream();
+
+// Process audio chunks
+const { result, isEndpoint } = await stream.processAudioChunk(samples, 16000);
+console.log('Partial:', result.text);
+
+await stream.release();
+await engine.destroy();
+```
+
+## Model Detection
+
+Paraformer models are **detected automatically** by the presence of `model.onnx` (or `model.int8.onnx`) and `tokens.txt`. No folder name pattern is required.
+
+Expected files:
+- `model.onnx` (or `model.int8.onnx`)
+- `tokens.txt`
+
+## Performance Tips
+
+### Use Quantized Models
+
+Int8 quantized Paraformer models offer excellent speed:
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/paraformer-zh' },
+  preferInt8: true, // Automatically use model.int8.onnx if available
+});
+```
+
+### Optimize for Batch Processing
+
+For transcribing multiple files:
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/paraformer-zh' },
+  numThreads: 4, // Use more threads for faster batch processing
+});
+
+const files = ['audio1.wav', 'audio2.wav', 'audio3.wav'];
+const results = await Promise.all(
+  files.map(file => stt.transcribeFile(file))
+);
+```
+
+### Hardware Acceleration
+
+```typescript
+const stt = await createSTT({
+  modelPath: { type: 'asset', path: 'models/paraformer-zh' },
+  provider: 'nnapi', // Android NNAPI
+  // provider: 'xnnpack', // XNNPACK for broader compatibility
+});
+```
+
+## Streaming Support
+
+<Note>
+  **Streaming**: ✅ Yes
+  
+  Paraformer supports streaming recognition. Use `createStreamingSTT()` with `modelType: 'paraformer'` for real-time transcription.
+</Note>
+
+## Advantages
+
+1. **Fast Inference**: Non-autoregressive decoding is faster than autoregressive models
+2. **Simple Deployment**: Single model file, no separate encoder/decoder/joiner
+3. **Excellent for Chinese**: State-of-the-art accuracy for Mandarin
+4. **Low Memory**: Single-model architecture uses less RAM
+5. **Streaming Capable**: Supports real-time recognition
+
+## Limitations
+
+1. **Language Coverage**: Primarily Chinese-focused, fewer English-only variants
+2. **No Hotwords**: Does not support contextual biasing (use transducer models for hotwords)
+3. **Domain-Specific**: Best suited for general Chinese speech (not specialized domains without fine-tuning)
+
+## Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Chinese Transcription" icon="language">
+    Transcribing Chinese audio files, podcasts, or videos
+  </Card>
+  <Card title="Real-Time Subtitles" icon="closed-captioning">
+    Live Chinese captions for streaming or conferencing
+  </Card>
+  <Card title="Voice Input" icon="microphone">
+    Chinese voice input for apps and forms
+  </Card>
+  <Card title="Batch Processing" icon="server">
+    Transcribing large collections of Chinese audio
+  </Card>
+</CardGroup>
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="Model not loading">
+    - Verify `model.onnx` and `tokens.txt` are present
+    - Check that the model path is correct
+    - Ensure sufficient device memory
+  </Accordion>
+  
+  <Accordion title="Poor accuracy on non-Chinese audio">
+    - Paraformer models are optimized for Chinese
+    - Use Whisper or transducer models for other languages
+    - Check if you're using a bilingual (Chinese+English) variant
+  </Accordion>
+  
+  <Accordion title="Slow performance">
+    - Enable `preferInt8: true` for quantized models
+    - Increase `numThreads` on multi-core devices
+    - Use hardware acceleration (`provider: 'nnapi'`)
+  </Accordion>
+</AccordionGroup>
+
+## Comparison with Other Models
+
+| Feature | Paraformer | Transducer | Whisper |
+|---------|------------|------------|----------|
+| **Speed** | Very Fast | Fast | Medium |
+| **Chinese Accuracy** | Excellent | Good | Good |
+| **Streaming** | Yes | Yes | No |
+| **Hotwords** | No | Yes | No |
+| **Multilingual** | Limited | Varies | Excellent |
+| **Model Size** | Small | Medium | Large |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="STT API" icon="code" href="/api/stt">
+    Detailed API documentation
+  </Card>
+  <Card title="Streaming STT" icon="waveform" href="/api/streaming-stt">
+    Real-time recognition guide
+  </Card>
+  <Card title="Model Setup" icon="download" href="/model-setup">
+    How to download and bundle models
+  </Card>
+  <Card title="Execution Providers" icon="microchip" href="/execution-providers">
+    Hardware acceleration options
+  </Card>
+</CardGroup>

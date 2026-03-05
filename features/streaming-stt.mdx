@@ -1,0 +1,563 @@
+---
+title: 'Streaming STT'
+description: 'Real-time speech recognition with partial results and endpoint detection'
+icon: 'signal-stream'
+---
+
+## Overview
+
+Streaming STT (also called "online" recognition) enables real-time transcription as audio is being captured. Unlike offline STT which processes complete files, streaming STT:
+
+- Provides **partial results** as you speak
+- Detects **end-of-utterance** automatically
+- Works with **live microphone input**
+- Supports **low-latency** applications like voice assistants
+
+**Use streaming STT when:**
+- You need real-time transcription during recording
+- You want to show partial results to users
+- You're building voice assistants or live captioning
+
+**Use offline STT when:**
+- You have complete audio files to transcribe
+- You don't need real-time results
+- You're processing pre-recorded audio
+
+## Supported Models
+
+Only specific model types support streaming:
+
+| Model Type | Description | Files |
+|------------|-------------|-------|
+| `transducer` | Transducer (zipformer) | encoder.onnx, decoder.onnx, joiner.onnx, tokens.txt |
+| `paraformer` | Paraformer streaming | encoder.onnx, decoder.onnx, tokens.txt |
+| `zipformer2_ctc` | Zipformer2 CTC | model.onnx, tokens.txt |
+| `nemo_ctc` | NeMo CTC | model.onnx, tokens.txt |
+| `tone_ctc` | T-One CTC | model.onnx, tokens.txt |
+
+<Warning>
+Offline-only models like **Whisper, SenseVoice, and Dolphin** do **not** support streaming. Use `getOnlineTypeOrNull()` to check if a model supports streaming.
+</Warning>
+
+## Quick Start
+
+```typescript
+import { createStreamingSTT } from 'react-native-sherpa-onnx/stt';
+
+// Create streaming engine
+const engine = await createStreamingSTT({
+  modelPath: { type: 'asset', path: 'models/sherpa-onnx-streaming-zipformer-en' },
+  modelType: 'transducer',  // or 'auto' to detect
+  enableEndpoint: true,
+});
+
+// Create a stream
+const stream = await engine.createStream();
+
+// Feed audio chunks from microphone
+const samples = getPcmSamplesFromMic(); // Float array [-1, 1]
+await stream.acceptWaveform(samples, 16000);
+
+// Check if ready to decode
+if (await stream.isReady()) {
+  await stream.decode();
+  const result = await stream.getResult();
+  console.log('Partial:', result.text);
+  
+  // Check for end of utterance
+  if (await stream.isEndpoint()) {
+    console.log('Utterance ended');
+    await stream.reset();  // Reset for next utterance
+  }
+}
+
+// Cleanup
+await stream.release();
+await engine.destroy();
+```
+
+## Checking Model Support
+
+Before creating a streaming engine, check if the model supports streaming:
+
+```typescript
+import { detectSttModel, getOnlineTypeOrNull } from 'react-native-sherpa-onnx/stt';
+
+// Detect model type
+const result = await detectSttModel(
+  { type: 'asset', path: 'models/my-model' }
+);
+
+// Check if streaming is supported
+const onlineType = getOnlineTypeOrNull(result.modelType);
+
+if (onlineType !== null) {
+  // Model supports streaming
+  console.log('Can use streaming with type:', onlineType);
+  const engine = await createStreamingSTT({
+    modelPath: { type: 'asset', path: 'models/my-model' },
+    modelType: onlineType,
+  });
+} else {
+  // Model is offline-only
+  console.log('Model does not support streaming, use createSTT() instead');
+}
+```
+
+## API Reference
+
+### createStreamingSTT(options)
+
+Creates a streaming STT engine for real-time recognition.
+
+```typescript src/stt/streaming.ts
+export async function createStreamingSTT(
+  options: StreamingSttInitOptions
+): Promise<StreamingSttEngine>;
+```
+
+**Options:**
+
+<ParamField path="modelPath" type="ModelPathConfig" required>
+  Model directory path configuration. Use `{ type: 'asset', path: '...' }` for bundled models.
+</ParamField>
+
+<ParamField path="modelType" type="OnlineSTTModelType | 'auto'" default="auto">
+  Model type: `'transducer'`, `'paraformer'`, `'zipformer2_ctc'`, `'nemo_ctc'`, `'tone_ctc'`, or `'auto'` to detect.
+</ParamField>
+
+<ParamField path="enableEndpoint" type="boolean" default="true">
+  Enable automatic end-of-utterance detection.
+</ParamField>
+
+<ParamField path="endpointConfig" type="EndpointConfig">
+  Fine-tune endpoint detection rules. See [Endpoint Detection](#endpoint-detection).
+</ParamField>
+
+<ParamField path="decodingMethod" type="'greedy_search' | 'modified_beam_search'" default="greedy_search">
+  Decoding algorithm. Beam search is slower but may be more accurate.
+</ParamField>
+
+<ParamField path="maxActivePaths" type="number" default="4">
+  Beam size for beam search decoding.
+</ParamField>
+
+<ParamField path="hotwordsFile" type="string">
+  Path to hotwords file (transducer models only).
+</ParamField>
+
+<ParamField path="hotwordsScore" type="number" default="1.5">
+  Hotwords boost score.
+</ParamField>
+
+<ParamField path="numThreads" type="number" default="1">
+  Number of threads for inference.
+</ParamField>
+
+<ParamField path="provider" type="string" default="cpu">
+  Execution provider (e.g., `'cpu'`, `'qnn'`, `'nnapi'`).
+</ParamField>
+
+<ParamField path="enableInputNormalization" type="boolean" default="true">
+  Automatically scale audio chunks to optimal levels. Disable if your audio is already normalized.
+</ParamField>
+
+### StreamingSttEngine
+
+The engine manages the recognizer and creates streams.
+
+<ResponseField name="instanceId" type="string">
+  Read-only engine identifier.
+</ResponseField>
+
+<ResponseField name="createStream" type="(hotwords?: string) => Promise<SttStream>">
+  Creates a new recognition stream. Optional hotwords string for per-stream contextual biasing.
+</ResponseField>
+
+<ResponseField name="destroy" type="() => Promise<void>">
+  Releases native resources. Must be called when done.
+</ResponseField>
+
+### SttStream
+
+A stream represents one recognition session (e.g., one utterance).
+
+#### acceptWaveform(samples, sampleRate)
+
+Feed audio samples to the stream.
+
+```typescript
+await stream.acceptWaveform(
+  samples,    // Float32Array or number[] in [-1, 1]
+  16000       // Sample rate in Hz
+);
+```
+
+#### isReady()
+
+Check if there's enough audio buffered to decode.
+
+```typescript
+const ready = await stream.isReady();
+if (ready) {
+  await stream.decode();
+}
+```
+
+#### decode()
+
+Run decoding on buffered audio. Call when `isReady()` returns true.
+
+```typescript
+await stream.decode();
+```
+
+#### getResult()
+
+Get the current partial or final result.
+
+```typescript
+const result = await stream.getResult();
+console.log('Text:', result.text);
+console.log('Tokens:', result.tokens);
+console.log('Timestamps:', result.timestamps);
+```
+
+#### isEndpoint()
+
+Check if end-of-utterance was detected.
+
+```typescript
+if (await stream.isEndpoint()) {
+  console.log('Speaker stopped talking');
+  await stream.reset();  // Reset for next utterance
+}
+```
+
+#### reset()
+
+Reset stream state for reuse. Call after endpoint or to start a new utterance.
+
+```typescript
+await stream.reset();
+```
+
+#### inputFinished()
+
+Signal that no more audio will be fed. Use when recording stops.
+
+```typescript
+await stream.inputFinished();
+// Decode any remaining audio
+while (await stream.isReady()) {
+  await stream.decode();
+}
+const finalResult = await stream.getResult();
+```
+
+#### release()
+
+Release native stream resources. Do not use the stream after this.
+
+```typescript
+await stream.release();
+```
+
+#### processAudioChunk(samples, sampleRate)
+
+Convenience method that combines accept + decode + getResult in one call.
+
+```typescript
+const { result, isEndpoint } = await stream.processAudioChunk(samples, 16000);
+console.log(result.text);
+if (isEndpoint) {
+  console.log('Utterance ended');
+}
+```
+
+<Tip>
+Use `processAudioChunk()` to reduce bridge round-trips from 5 calls to 1 per audio chunk.
+</Tip>
+
+## Endpoint Detection
+
+Endpoint detection automatically determines when the user has stopped speaking.
+
+### Default Rules
+
+Three rules are evaluated in order (first match wins):
+
+1. **Rule 1**: 2.4s of trailing silence (no speech required)
+2. **Rule 2**: 1.4s of trailing silence + speech detected
+3. **Rule 3**: Max utterance length of 20s
+
+### Custom Endpoint Configuration
+
+```typescript
+const engine = await createStreamingSTT({
+  modelPath: { type: 'asset', path: 'models/streaming-zipformer-en' },
+  modelType: 'transducer',
+  enableEndpoint: true,
+  endpointConfig: {
+    rule1: {
+      mustContainNonSilence: false,
+      minTrailingSilence: 1.0,    // Shorter = faster end
+      minUtteranceLength: 0,
+    },
+    rule2: {
+      mustContainNonSilence: true,
+      minTrailingSilence: 0.8,
+      minUtteranceLength: 0,
+    },
+    rule3: {
+      mustContainNonSilence: false,
+      minTrailingSilence: 0,
+      minUtteranceLength: 30,      // Max 30s per utterance
+    },
+  },
+});
+```
+
+## Live Microphone Integration
+
+For live microphone capture with automatic resampling, use the PCM Live Stream API:
+
+```typescript
+import { createStreamingSTT } from 'react-native-sherpa-onnx/stt';
+import { createPcmLiveStream } from 'react-native-sherpa-onnx/audio';
+
+const engine = await createStreamingSTT({
+  modelPath: { type: 'asset', path: 'models/streaming-zipformer-en' },
+  modelType: 'transducer',
+});
+
+const stream = await engine.createStream();
+
+// Create microphone stream with automatic resampling to 16kHz
+const micStream = await createPcmLiveStream({
+  sampleRate: 16000,  // Resample to 16kHz
+  channels: 1,        // Mono
+});
+
+micStream.onData = async (chunk) => {
+  // Feed to STT
+  const { result, isEndpoint } = await stream.processAudioChunk(
+    chunk.samples,
+    chunk.sampleRate
+  );
+  
+  if (result.text) {
+    console.log('Partial:', result.text);
+  }
+  
+  if (isEndpoint) {
+    console.log('Final:', result.text);
+    await stream.reset();
+  }
+};
+
+// Start recording
+await micStream.start();
+
+// Later: stop recording
+await micStream.stop();
+await stream.release();
+await engine.destroy();
+```
+
+## Common Patterns
+
+### Typical Recognition Loop
+
+```typescript
+const engine = await createStreamingSTT({
+  modelPath: { type: 'asset', path: 'models/streaming-zipformer-en' },
+  modelType: 'transducer',
+});
+
+const stream = await engine.createStream();
+
+async function onAudioChunk(samples: number[], sampleRate: number) {
+  await stream.acceptWaveform(samples, sampleRate);
+  
+  while (await stream.isReady()) {
+    await stream.decode();
+    const result = await stream.getResult();
+    
+    if (result.text) {
+      updateUI(result.text);
+    }
+    
+    if (await stream.isEndpoint()) {
+      console.log('Final result:', result.text);
+      await stream.reset();
+      break;
+    }
+  }
+}
+
+// Feed chunks from microphone
+microphone.onData = (chunk) => onAudioChunk(chunk.samples, chunk.sampleRate);
+```
+
+### Using processAudioChunk (Simplified)
+
+```typescript
+const stream = await engine.createStream();
+
+for (const chunk of audioChunks) {
+  const { result, isEndpoint } = await stream.processAudioChunk(
+    chunk.samples,
+    16000
+  );
+  
+  if (result.text) {
+    setTranscript((prev) => prev + ' ' + result.text);
+  }
+  
+  if (isEndpoint) {
+    console.log('Utterance complete');
+    break;
+  }
+}
+
+await stream.release();
+```
+
+### Multiple Streams
+
+Create multiple streams from one engine (e.g., for different channels):
+
+```typescript
+const engine = await createStreamingSTT({ /* ... */ });
+
+const stream1 = await engine.createStream();
+const stream2 = await engine.createStream();
+
+// Use streams independently
+// ...
+
+await stream1.release();
+await stream2.release();
+await engine.destroy();
+```
+
+## Hotwords in Streaming
+
+For transducer models, you can use hotwords for contextual biasing:
+
+```typescript
+// At engine creation
+const engine = await createStreamingSTT({
+  modelPath: { type: 'asset', path: 'models/streaming-zipformer-en' },
+  modelType: 'transducer',
+  hotwordsFile: '/path/to/hotwords.txt',
+  hotwordsScore: 1.5,
+});
+
+// Or per stream
+const stream = await engine.createStream(
+  'REACT NATIVE 2.0\nSHERPA ONNX\nTURBOMODULE 1.5'
+);
+```
+
+## Input Normalization
+
+By default, `processAudioChunk()` applies adaptive normalization to handle varying microphone levels:
+
+```typescript
+// Default: normalization enabled
+const engine = await createStreamingSTT({
+  modelPath: { type: 'asset', path: 'models/streaming-zipformer-en' },
+  enableInputNormalization: true,  // Default
+});
+
+// Disable if your audio is already normalized
+const engine2 = await createStreamingSTT({
+  modelPath: { type: 'asset', path: 'models/streaming-zipformer-en' },
+  enableInputNormalization: false,
+});
+```
+
+<Note>
+Normalization scales each chunk so the peak is around 0.8, which helps with quiet iOS mics or varying Android devices.
+</Note>
+
+## Performance Tips
+
+### Threading
+
+```typescript
+const engine = await createStreamingSTT({
+  modelPath: { type: 'asset', path: 'models/streaming-zipformer-en' },
+  numThreads: 2,  // Increase for faster decoding
+});
+```
+
+### Hardware Acceleration
+
+```typescript
+import { getQnnSupport } from 'react-native-sherpa-onnx';
+
+const qnnSupport = await getQnnSupport();
+if (qnnSupport.canInit) {
+  const engine = await createStreamingSTT({
+    modelPath: { type: 'asset', path: 'models/streaming-zipformer-en' },
+    provider: 'qnn',  // Use Qualcomm NPU
+  });
+}
+```
+
+### Reduce Latency
+
+- Use `processAudioChunk()` instead of separate method calls
+- Keep audio chunk sizes reasonable (e.g., 0.1s - 0.5s worth of samples)
+- Increase `numThreads` on multi-core devices
+- Use hardware acceleration when available
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Error: Model type not supported for streaming">
+    Only `transducer`, `paraformer`, `zipformer2_ctc`, `nemo_ctc`, and `tone_ctc` support streaming. Whisper, SenseVoice, and Dolphin are offline-only. Use `getOnlineTypeOrNull()` to check support.
+  </Accordion>
+
+  <Accordion title="Poor recognition quality">
+    - Ensure audio is 16 kHz mono
+    - Check microphone permissions and quality
+    - Verify audio samples are in range [-1, 1]
+    - Try disabling `enableInputNormalization` if audio is already normalized
+    - Increase `hotwordsScore` for better keyword recognition
+  </Accordion>
+
+  <Accordion title="Endpoint triggers too early/late">
+    Adjust `endpointConfig` rules:
+    - Too early: Increase `minTrailingSilence`
+    - Too late: Decrease `minTrailingSilence`
+    - For long utterances: Increase `minUtteranceLength` in rule3
+  </Accordion>
+
+  <Accordion title="High latency or stuttering">
+    - Reduce audio chunk size
+    - Increase `numThreads`
+    - Use hardware acceleration (QNN, NNAPI)
+    - Use `processAudioChunk()` to reduce bridge calls
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Offline STT" icon="microphone" href="/features/speech-to-text">
+    Transcribe complete audio files
+  </Card>
+  <Card title="Model Setup" icon="folder" href="/features/model-setup">
+    Learn how to bundle and load models
+  </Card>
+  <Card title="Execution Providers" icon="microchip" href="/features/execution-providers">
+    Hardware acceleration options
+  </Card>
+  <Card title="Text-to-Speech" icon="volume" href="/features/text-to-speech">
+    Generate speech from text
+  </Card>
+</CardGroup>

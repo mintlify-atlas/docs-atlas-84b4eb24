@@ -1,0 +1,146 @@
+---
+title: "Disable FFmpeg"
+description: "Reduce bundle size and avoid symbol conflicts by disabling FFmpeg in your Android build"
+---
+
+## Overview
+
+If your app uses another native library that ships its own FFmpeg (such as `react-native-sound-api`), having two copies of FFmpeg in the same process can cause **symbol clashes** and crashes. You can disable FFmpeg in react-native-sherpa-onnx to prevent duplicate FFmpeg libraries from being linked or shipped.
+
+### When to disable FFmpeg
+
+- Your app uses another library that includes FFmpeg
+- You want to reduce APK size and don't need audio conversion features
+- You're experiencing symbol conflicts or crashes related to FFmpeg
+
+### What you'll lose
+
+When FFmpeg is disabled, the following APIs will be built but **return an error at runtime**:
+
+- `convertAudioToWav16k(inputPath, outputPath)` - Converts audio files to WAV 16 kHz mono 16-bit PCM
+- `convertAudioToFormat(inputPath, outputPath, format, outputSampleRateHz?)` - Converts audio to various formats
+
+All other features (STT, TTS, archive extraction, model detection) continue to work normally.
+
+<Note>
+  All STT and TTS functionality remains fully operational when FFmpeg is disabled. Only the audio conversion utilities are affected.
+</Note>
+
+## Configuration
+
+<Steps>
+  <Step title="Set the Gradle flag">
+    Add the following property to your `gradle.properties` file (at the project or root level):
+
+    ```properties
+    sherpaOnnxDisableFfmpeg=true
+    ```
+
+    Alternatively, pass it as a command-line project property:
+
+    ```bash
+    ./gradlew assembleRelease -PsherpaOnnxDisableFfmpeg=true
+    ```
+  </Step>
+
+  <Step title="Build your app">
+    When this flag is set, the Android native build will:
+
+    - **Not link** or ship any FFmpeg libraries (`libavcodec.so`, `libavformat.so`, etc.)
+    - **Not require** FFmpeg prebuilts or headers during the build process
+    - Complete successfully without FFmpeg dependencies
+  </Step>
+
+  <Step title="Handle conversion APIs (if used)">
+    If your app previously called the audio conversion functions, you'll need to:
+
+    - Check for errors when calling `convertAudioToWav16k` or `convertAudioToFormat`
+    - Implement alternative audio conversion using another library
+    - Or ensure your audio is already in the correct format (16 kHz WAV for STT)
+
+    ```typescript
+    import { convertAudioToWav16k } from 'react-native-sherpa-onnx/audio';
+
+    try {
+      const result = await convertAudioToWav16k(inputPath, outputPath);
+      if (result.error) {
+        console.error('FFmpeg not available:', result.error);
+        // Handle error - use alternative conversion method
+      }
+    } catch (error) {
+      console.error('Conversion failed:', error);
+    }
+    ```
+  </Step>
+</Steps>
+
+## Comparison
+
+### Before (Default)
+
+- FFmpeg libraries are linked and shipped with your app
+- Audio conversion APIs work out of the box
+- APK size includes FFmpeg libraries (~2-4 MB per architecture)
+- Risk of symbol conflicts if another library also includes FFmpeg
+
+### After (FFmpeg Disabled)
+
+- No FFmpeg libraries in your APK
+- Smaller app bundle size
+- Audio conversion APIs return errors
+- No risk of FFmpeg symbol conflicts
+- Compatible with other libraries that include FFmpeg
+
+## Trade-offs and Limitations
+
+<Warning>
+  When FFmpeg is disabled, you cannot use the built-in audio conversion utilities. You must provide audio in the correct format or use an alternative conversion library.
+</Warning>
+
+### 1. No built-in audio conversion
+
+You must handle audio format conversion yourself if needed:
+
+- STT requires 16 kHz, mono, 16-bit PCM WAV files
+- Use another library for conversion (e.g., decode with `react-native-sound-api` and resample manually)
+- Or pre-process audio files before passing them to sherpa-onnx
+
+### 2. No runtime FFmpeg sharing
+
+Disabling FFmpeg means this SDK's native code is **compiled without FFmpeg**. The conversion helpers are stubbed and always return an error. The SDK does **not** call into another app's FFmpeg library.
+
+This is by design - you avoid symbol clashes by simply not using FFmpeg in this SDK at all.
+
+### 3. Safe coexistence with other FFmpeg libraries
+
+Because this SDK no longer links or uses any FFmpeg when disabled, there is **no risk** of ABI or version mismatch with another FFmpeg in your app's process.
+
+## Troubleshooting symbol conflicts
+
+### When crashes can still occur
+
+**If FFmpeg is NOT disabled** and your app loads a different FFmpeg from another dependency:
+
+- Two FFmpeg implementations exist in the same process
+- The dynamic linker may resolve symbols from the wrong library
+- This can cause crashes, undefined behavior, or ABI mismatches
+- Symptoms include: crashes when calling conversion functions, symbol conflicts like `av_codec_next` or `avformat_open_input`
+
+**Mitigation:** Set `sherpaOnnxDisableFfmpeg=true` so only one FFmpeg library (from your other dependency) is present.
+
+**If FFmpeg is disabled** and you call conversion APIs:
+
+- The call returns an error (e.g., "FFmpeg not available")
+- It does **not** crash the process
+- Your app should check the result and handle the error gracefully
+
+## Summary
+
+| Configuration | Effect |
+|--------------|--------|
+| **`sherpaOnnxDisableFfmpeg=true`** | No FFmpeg linked or shipped; build succeeds without FFmpeg; conversion APIs return errors at runtime. Use when you have another FFmpeg in your app or want to reduce bundle size. |
+| **Default (unset or false)** | FFmpeg is required; conversion APIs work; do not combine with another FFmpeg library unless you accept the risk of symbol clashes. |
+
+<Note>
+  This configuration only affects Android builds. iOS builds do not include FFmpeg and are unaffected by this flag.
+</Note>
