@@ -337,7 +337,7 @@ function saveAudioToContentUri(
 
 ### shareAudioFile()
 
-Share a TTS audio file.
+Share a TTS audio file (Android).
 
 ```typescript
 function shareAudioFile(
@@ -345,6 +345,53 @@ function shareAudioFile(
   mimeType?: string
 ): Promise<void>
 ```
+
+### saveTextToContentUri()
+
+Save text content to Android's MediaStore (Android only).
+
+```typescript
+function saveTextToContentUri(
+  text: string,
+  displayName: string,
+  mimeType?: string
+): Promise<string>
+```
+
+<ParamField path="text" type="string" required>
+  Text content to save
+</ParamField>
+
+<ParamField path="displayName" type="string" required>
+  Display name for the saved file
+</ParamField>
+
+<ParamField path="mimeType" type="string">
+  MIME type (default: 'text/plain')
+</ParamField>
+
+Returns a promise resolving to the content URI.
+
+### copyContentUriToCache()
+
+Copy a file from a content URI to the app's cache directory (Android only).
+
+```typescript
+function copyContentUriToCache(
+  contentUri: string,
+  cacheFileName: string
+): Promise<string>
+```
+
+<ParamField path="contentUri" type="string" required>
+  Source content URI
+</ParamField>
+
+<ParamField path="cacheFileName" type="string" required>
+  Destination filename in cache
+</ParamField>
+
+Returns a promise resolving to the cache file path.
 
 ## See Also
 

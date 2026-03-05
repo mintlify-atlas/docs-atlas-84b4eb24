@@ -437,6 +437,89 @@ if (!checksumResult.success) {
 }
 ```
 
+## Utility Functions
+
+### extractTarBz2()
+
+Extract a `.tar.bz2` archive file (requires libarchive).
+
+```typescript
+function extractTarBz2(
+  sourcePath: string,
+  targetPath: string,
+  force?: boolean,
+  onProgress?: (event: ExtractProgressEvent) => void
+): Promise<void>
+```
+
+<ParamField path="sourcePath" type="string" required>
+  Absolute path to the `.tar.bz2` file
+</ParamField>
+
+<ParamField path="targetPath" type="string" required>
+  Absolute path to extract to
+</ParamField>
+
+<ParamField path="force" type="boolean">
+  If `true`, overwrite existing files. Default: `false`
+</ParamField>
+
+<ParamField path="onProgress" type="(event: ExtractProgressEvent) => void">
+  Progress callback with `bytesExtracted` and `totalBytes`
+</ParamField>
+
+<Note>
+  If libarchive is disabled in your build (see [Disable Libarchive](/configuration/disable-libarchive)), this function will reject with an error.
+</Note>
+
+**Example:**
+
+```typescript
+import { extractTarBz2 } from 'react-native-sherpa-onnx/download';
+
+await extractTarBz2(
+  '/path/to/model.tar.bz2',
+  '/path/to/models/',
+  false,
+  (event) => {
+    console.log(`Extracted ${event.bytesExtracted} / ${event.totalBytes}`);
+  }
+);
+```
+
+### cancelExtractTarBz2()
+
+Cancel an ongoing extraction.
+
+```typescript
+function cancelExtractTarBz2(): void
+```
+
+### computeFileSha256()
+
+Compute SHA256 checksum of a file.
+
+```typescript
+function computeFileSha256(
+  filePath: string
+): Promise<string>
+```
+
+<ParamField path="filePath" type="string" required>
+  Absolute path to the file
+</ParamField>
+
+Returns a promise resolving to the lowercase hex SHA256 hash.
+
+**Example:**
+
+```typescript
+import { computeFileSha256 } from 'react-native-sherpa-onnx/download';
+
+const hash = await computeFileSha256('/path/to/model.tar.bz2');
+console.log('SHA256:', hash);
+```
+
 ## See Also
 
 - [STT API](/api/stt/create-stt) - Using downloaded models with STT
