@@ -1,0 +1,165 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "React Native Sherpa-ONNX",
+  "projectDescription": "React Native TurboModule for offline on-device Speech Processing including STT, TTS, Diarization, and VAD.",
+  "theme": "aspen",
+  "primaryColor": "#848c8e",
+  "lightColor": "#11161e",
+  "darkColor": "#cfd0d2",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/speech-to-text",
+              "features/streaming-stt",
+              "features/text-to-speech",
+              "features/streaming-tts",
+              "features/model-setup",
+              "features/execution-providers"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/pcm-live-stream",
+              "advanced/download-manager",
+              "advanced/hotwords",
+              "advanced/model-detection"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/disable-ffmpeg",
+              "configuration/disable-libarchive",
+              "configuration/play-asset-delivery"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core API",
+            "pages": [
+              "api/core",
+              "api/model-path"
+            ]
+          },
+          {
+            "group": "Speech-to-Text",
+            "pages": [
+              "api/stt/create-stt",
+              "api/stt/streaming-stt",
+              "api/stt/types"
+            ]
+          },
+          {
+            "group": "Text-to-Speech",
+            "pages": [
+              "api/tts/create-tts",
+              "api/tts/streaming-tts",
+              "api/tts/types"
+            ]
+          },
+          {
+            "group": "Audio & Models",
+            "pages": [
+              "api/audio",
+              "api/download",
+              "api/vad",
+              "api/diarization"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Models",
+        "groups": [
+          {
+            "group": "Speech-to-Text Models",
+            "pages": [
+              "models/stt/overview",
+              "models/stt/transducer",
+              "models/stt/paraformer",
+              "models/stt/whisper",
+              "models/stt/nemo-ctc",
+              "models/stt/other-models"
+            ]
+          },
+          {
+            "group": "Text-to-Speech Models",
+            "pages": [
+              "models/tts/overview",
+              "models/tts/vits",
+              "models/tts/matcha",
+              "models/tts/kokoro",
+              "models/tts/other-models"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Resources",
+        "groups": [
+          {
+            "group": "Additional Resources",
+            "pages": [
+              "resources/migration",
+              "resources/examples",
+              "resources/troubleshooting",
+              "resources/contributing"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Offline Speech-to-Text (STT) with multiple model types",
+    "Online streaming Speech-to-Text with real-time recognition",
+    "Text-to-Speech (TTS) with multiple voice models",
+    "Streaming Text-to-Speech for low-latency generation",
+    "Voice Activity Detection (VAD)",
+    "Speaker Diarization",
+    "Speech Enhancement and Source Separation",
+    "Hardware acceleration support (NNAPI, XNNPACK, Core ML, QNN)",
+    "Model download manager with automatic extraction",
+    "Play Asset Delivery (PAD) support for Android",
+    "TypeScript support with full type definitions",
+    "Cross-platform support for iOS and Android"
+  ],
+  "publicApiSurface": [
+    "createSTT() - Create STT engine instance",
+    "createStreamingSTT() - Create streaming STT engine",
+    "createTTS() - Create TTS engine instance",
+    "createStreamingTTS() - Create streaming TTS engine",
+    "detectSttModel() - Detect STT model type",
+    "detectTtsModel() - Detect TTS model type",
+    "testSherpaInit() - Test native library initialization",
+    "getQnnSupport() - Check QNN acceleration support",
+    "getNnapiSupport() - Check NNAPI acceleration support",
+    "getXnnpackSupport() - Check XNNPACK support",
+    "getCoreMlSupport() - Check Core ML support",
+    "getAvailableProviders() - List available execution providers",
+    "ModelDownloadManager - Download and manage models",
+    "assetModelPath() - Reference bundled asset models",
+    "fileModelPath() - Reference file system models",
+    "autoModelPath() - Auto-detect model location",
+    "listAssetModels() - List bundled models",
+    "listModelsAtPath() - List models at file path"
+  ]
+}
